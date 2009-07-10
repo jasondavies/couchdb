@@ -300,7 +300,7 @@ function CouchDB(name, httpHeaders) {
 CouchDB.last_req = null;
 
 CouchDB.login = function(username, password) {
-  CouchDB.last_req = CouchDB.request("POST", "/_login", {
+  CouchDB.last_req = CouchDB.request("POST", "/_session", {
     headers: {"Content-Type": "application/x-www-form-urlencoded",
       "X-CouchDB-WWW-Authenticate": "Cookie"},
     body: "username=" + encodeURIComponent(username) + "&password=" + encodeURIComponent(password)
@@ -309,9 +309,10 @@ CouchDB.login = function(username, password) {
 }
 
 CouchDB.logout = function() {
-  CouchDB.last_req = CouchDB.request("POST", "/_logout", {});
-  headers: {"Content-Type": "application/x-www-form-urlencoded",
-    "X-CouchDB-WWW-Authenticate": "Cookie"},
+  CouchDB.last_req = CouchDB.request("DELETE", "/_session", {
+    headers: {"Content-Type": "application/x-www-form-urlencoded",
+      "X-CouchDB-WWW-Authenticate": "Cookie"}
+  });
   return JSON.parse(CouchDB.last_req.responseText);
 }
 
