@@ -60,7 +60,7 @@ couchTests.security_validation = function(debug) {
         T(wrongPasswordDb.last_req.status == 401);
       }
 
-      // test force_login=true.
+      // test force basic login
       var resp = wrongPasswordDb.request("GET", "/_session?basic=true");
       var err = JSON.parse(resp.responseText);
       T(err.error == "unauthorized");
