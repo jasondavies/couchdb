@@ -74,6 +74,7 @@ loadTest("config.js");
 loadTest("form_submit.js");
 loadTest("security_validation.js");
 loadTest("cookie_auth.js");
+loadTest("oauth.js");
 loadTest("stats.js");
 loadTest("rev_stemming.js");
 loadTest("rewrite.js");
