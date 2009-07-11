@@ -140,4 +140,6 @@ nobase_dist_localdata_DATA = \
     www/script/test/stats.js \
     www/script/test/rewrite.js \
     www/script/test/changes.js \
+    www/script/test/lorem.txt \
+    www/script/test/lorem_b64.txt \
     www/style/layout.css

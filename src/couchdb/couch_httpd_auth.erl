@@ -17,9 +17,9 @@
 -export([cookie_authentication_handler/1]).
 -export([null_authentication_handler/1]).
 -export([cookie_auth_header/2]).
--export([handle_login_req/1, handle_logout_req/1]).
+-export([handle_session_req/1]).
 
--import(couch_httpd, [header_value/2, send_json/4, send_method_not_allowed/2]).
+-import(couch_httpd, [header_value/2, send_json/2,send_json/4, send_method_not_allowed/2]).
 -import(erlang, [integer_to_list/2, list_to_integer/2]).
 
 special_test_authentication_handler(Req) ->
@@ -106,6 +106,9 @@ cookie_authentication_handler(Req) ->
 get_user(Db, UserName) ->
     DesignId = <<"_design/_auth">>,
     ViewName = <<"users">>,
+    % if the design doc or the view doesn't exist, then make it
+    ensure_users_view_exists(Db, DesignId, ViewName),
+    
     case (catch couch_view:get_map_view(Db, DesignId, ViewName, nil)) of
     {ok, View, _Group} ->
         FoldlFun = fun
@@ -117,13 +120,40 @@ get_user(Db, UserName) ->
         _Else -> nil
         end;
     {not_found, _Reason} ->
-        case (catch couch_view:get_reduce_view(Db, DesignId, ViewName, nil)) of
-        {ok, _ReduceView, _Group} ->
-            not_implemented;
-        {not_found, _Reason} ->
-            nil
-        end
+        nil
+        % case (catch couch_view:get_reduce_view(Db, DesignId, ViewName, nil)) of
+        % {ok, _ReduceView, _Group} ->
+        %     not_implemented;
+        % {not_found, _Reason} ->
+        %     nil
+        % end
     end.
+
+ensure_users_view_exists(Db, DDocId, VName) -> 
+    try couch_httpd_db:couch_doc_open(Db, DDocId, nil, []) of
+        _Foo -> ok
+    catch 
+        _:Error -> 
+            ?LOG_ERROR("create the design document ~p : ~p", [DDocId, Error]),
+            % create the design document
+            {ok, AuthDesign} = auth_design_doc(DDocId, VName),
+            {ok, _Rev} = couch_db:update_doc(Db, AuthDesign, []),
+            ?LOG_ERROR("created the design document", []),
+            ok
+    end.
+
+auth_design_doc(DocId, VName) ->
+    DocProps = [
+        {<<"_id">>, DocId},
+        {<<"language">>,<<"javascript">>},
+        {<<"views">>,
+            {[{VName,
+                {[{<<"map">>,
+                    <<"function (doc) {\n if (doc.type == \"user\") {\n        emit(doc.username, doc);\n}\n}">>
+                }]}
+            }]}
+        }],
+    {ok, couch_doc:from_json_obj({DocProps})}.
 
 cookie_auth_user(_Req, undefined) -> nil;
 cookie_auth_user(#httpd{mochi_req=MochiReq}=Req, DbName) ->
@@ -150,17 +180,19 @@ cookie_auth_user(#httpd{mochi_req=MochiReq}=Req, DbName) ->
                         FullSecret = <<Secret/binary, UserSalt/binary>>,
                         ExpectedHash = crypto:sha_mac(FullSecret, User ++ ":" ++ TimeStr),
                         Hash = ?l2b(string:join(HashParts, ":")),
-                        Timeout = 600,
+                        Timeout = to_int(couch_config:get("couch_httpd_auth", "timeout", 600)),
+                        ?LOG_DEBUG("timeout ~p", [Timeout]),
                         case (catch list_to_integer(TimeStr, 16)) of
-                        TimeStamp when CurrentTime < TimeStamp + Timeout andalso ExpectedHash == Hash ->
-                            TimeLeft = TimeStamp + Timeout - CurrentTime,
-                            ?LOG_DEBUG("Successful cookie auth as: ~p", [User]),
-                            Req#httpd{user_ctx=#user_ctx{
-                                name=?l2b(User),
-                                roles=proplists:get_value(<<"roles">>, Result, [])
-                            }, auth={FullSecret, TimeLeft < Timeout*0.9}};
-                        _Else ->
-                            nil
+                            TimeStamp when CurrentTime < TimeStamp + Timeout 
+                            andalso ExpectedHash == Hash ->
+                                TimeLeft = TimeStamp + Timeout - CurrentTime,
+                                ?LOG_DEBUG("Successful cookie auth as: ~p", [User]),
+                                Req#httpd{user_ctx=#user_ctx{
+                                    name=?l2b(User),
+                                    roles=proplists:get_value(<<"roles">>, Result, [])
+                                }, auth={FullSecret, TimeLeft < Timeout*0.9}};
+                            _Else ->
+                                nil
                         end
                     end
                 end
@@ -237,17 +269,31 @@ handle_login_req(#httpd{method='POST', mochi_req=MochiReq}=Req, #db{}=Db) ->
             throw({unauthorized, <<"Name or password is incorrect.">>})
     end.
 
-% Login handler
-handle_login_req(#httpd{method='POST'}=Req) ->
+% Session Handler
+
+handle_session_req(#httpd{method='POST'}=Req) ->
+    % login
     DbName = couch_config:get("couch_httpd_auth", "authentication_db"),
     case couch_db:open(?l2b(DbName), [{user_ctx, #user_ctx{roles=[<<"_admin">>]}}]) of
         {ok, Db} -> handle_login_req(Req, Db)
     end;
-handle_login_req(Req) ->
-    send_method_not_allowed(Req, "POST").
-
-% Logout handler
-handle_logout_req(#httpd{method='POST'}=Req) ->
+handle_session_req(#httpd{method='GET', user_ctx=UserCtx}=Req) ->
+    % whoami
+    Name = UserCtx#user_ctx.name,
+    Roles = UserCtx#user_ctx.roles,
+    ForceLogin = couch_httpd:qs_value(Req, "basic", "false"),
+    case {Name, ForceLogin} of
+        {null, "true"} ->
+            throw({unauthorized, <<"Please login.">>});
+        _False -> ok
+    end,
+    send_json(Req, {[
+        {ok, true},
+        {name, Name},
+        {roles, Roles}
+    ]});
+handle_session_req(#httpd{method='DELETE'}=Req) ->
+    % logout
     Cookie = mochiweb_cookies:cookie("AuthSession", "", [{path, "/"}, {http_only, true}]),
     {Code, Headers} = case couch_httpd:qs_value(Req, "next", nil) of
         nil ->
@@ -256,5 +302,33 @@ handle_logout_req(#httpd{method='POST'}=Req) ->
             {302, [Cookie, {"Location", couch_httpd:absolute_uri(Req, Redirect)}]}
     end,
     send_json(Req, Code, Headers, {[{ok, true}]});
-handle_logout_req(Req) ->
-    send_method_not_allowed(Req, "POST").
+handle_session_req(Req) ->
+    send_method_not_allowed(Req, "GET,HEAD,POST,DELETE").
+
+
+to_int(Value) when is_list(Value) ->
+    list_to_integer(Value);
+to_int(Value) when is_integer(Value) ->
+    Value.
+
+% % Login handler
+% handle_login_req(#httpd{method='POST'}=Req) ->
+%     DbName = couch_config:get("couch_httpd_auth", "authentication_db"),
+%     case couch_db:open(?l2b(DbName), [{user_ctx, #user_ctx{roles=[<<"_admin">>]}}]) of
+%         {ok, Db} -> handle_login_req(Req, Db)
+%     end;
+% handle_login_req(Req) ->
+%     send_method_not_allowed(Req, "POST").
+% 
+% % Logout handler
+% handle_logout_req(#httpd{method='POST'}=Req) ->
+%     Cookie = mochiweb_cookies:cookie("AuthSession", "", [{path, "/"}, {http_only, true}]),
+%     {Code, Headers} = case couch_httpd:qs_value(Req, "next", nil) of
+%         nil ->
+%             {200, [Cookie]};
+%         Redirect ->
+%             {302, [Cookie, {"Location", couch_httpd:absolute_uri(Req, Redirect)}]}
+%     end,
+%     send_json(Req, Code, Headers, {[{ok, true}]});
+% handle_logout_req(Req) ->
+%     send_method_not_allowed(Req, "POST").

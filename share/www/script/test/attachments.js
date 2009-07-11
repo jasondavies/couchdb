@@ -58,6 +58,10 @@ couchTests.attachments= function(debug) {
     headers:{"Content-Type": "text/plain;charset=utf-8"}
   });
   T(xhr.status == 201);
+  TEquals("/bin_doc2/foo2.txt",
+    xhr.getResponseHeader("Location").substr(-18),
+    "should return Location header to newly created or updated attachment");
+  
   var rev = JSON.parse(xhr.responseText).rev;
 
   binAttDoc2 = db.open("bin_doc2");
@@ -78,7 +82,8 @@ couchTests.attachments= function(debug) {
   // test with rev, should not fail
   var xhr = CouchDB.request("DELETE", "/test_suite_db/bin_doc2/foo2.txt?rev=" + rev);
   T(xhr.status == 200);
-
+  TEquals(null, xhr.getResponseHeader("Location"),
+    "should not return Location header on DELETE request");
 
   // test binary data
   var bin_data = "JHAPDO*AU£PN ){(3u[d 93DQ9¡€])}    ææøo'∂ƒæ≤çæππ•¥∫¶®#†π¶®¥π€ª®˙π8np";
@@ -149,21 +154,20 @@ couchTests.attachments= function(debug) {
   T(xhr.status == 200);
   T(xhr.responseText == "This is a string");
 
-
   // Attachment sparseness COUCHDB-220
 
   var docs = []
   for (var i = 0; i < 5; i++) {
-      var doc = {
-	  _id: (i).toString(),
-	  _attachments:{
-	      "foo.txt": {
-		  content_type:"text/plain",
-		  data: "VGhpcyBpcyBhIGJhc2U2NCBlbmNvZGVkIHRleHQ="
-	      }
-	  }
+    var doc = {
+      _id: (i).toString(),
+      _attachments:{
+        "foo.txt": {
+          content_type:"text/plain",
+          data: "VGhpcyBpcyBhIGJhc2U2NCBlbmNvZGVkIHRleHQ="
+        }
       }
-      docs.push(doc)
+    }
+    docs.push(doc)
   }
 
   db.bulkSave(docs);
@@ -197,4 +201,17 @@ couchTests.attachments= function(debug) {
   T(xhr.responseText == lorem);
   T(xhr.getResponseHeader("Content-Type") == "text/plain;charset=utf-8");
 
+  // test large inline attachment too
+  var lorem_b64 = CouchDB.request("GET", "/_utils/script/test/lorem_b64.txt").responseText;
+  var doc = db.open("bin_doc5", {attachments:true});
+  T(doc._attachments["lorem.txt"].data == lorem_b64);
+
+  // test etags for attachments.
+  var xhr = CouchDB.request("GET", "/test_suite_db/bin_doc5/lorem.txt");
+  T(xhr.status == 200);
+  var etag = xhr.getResponseHeader("etag");
+  xhr = CouchDB.request("GET", "/test_suite_db/bin_doc5/lorem.txt", {
+    headers: {"if-none-match": etag}
+  });
+  T(xhr.status == 304);
 };
