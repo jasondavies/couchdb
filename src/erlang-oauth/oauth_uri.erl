@@ -43,7 +43,7 @@ params_from_header_string(String) ->
 
 param_from_header_string(Param) ->
   [Key, QuotedValue] = string:tokens(Param, "="),
-  [Value] = string:tokens(QuotedValue, "\""),
+  Value = string:substr(QuotedValue, 2, length(QuotedValue) - 2),
   {decode(Key), decode(Value)}.
 
 params_from_string(Params) ->

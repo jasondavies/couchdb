@@ -12,7 +12,7 @@
 
 couchTests.oauth = function(debug) {
   // This tests OAuth authentication.
-  
+
   var db = new CouchDB("test_suite_db");
   db.deleteDb();
   db.createDb();
@@ -27,26 +27,23 @@ couchTests.oauth = function(debug) {
     return secret;
   }
 
-  function oauthRequest(path, params, method) {
-    var d = [];
+  function oauthRequest(path, message, accessor, method) {
+    message.action = path;
+    message.method = method || 'GET';
+    OAuth.SignatureMethod.sign(message, accessor);
+    var parameters = message.parameters;
     if (method == "POST" || method == "GET") {
-      for (k in params) {
-        d.push(encodeURIComponent(k) + '=' + encodeURIComponent(encodeURIComponent(params[k])));
-      }
       if (method == "GET") {
-        return CouchDB.request("GET", path + '?' + d.join('&'));
+        return CouchDB.request("GET", OAuth.addToURL(path, parameters));
       } else {
         return CouchDB.request("POST", path, {
           headers: {"Content-Type": "application/x-www-form-urlencoded"},
-          body: d.join('&')
+          body: OAuth.formEncode(parameters)
         });
       }
     } else {
-      for (k in params) {
-        d.push(encodeURIComponent(k) + '="' + encodeURIComponent(encodeURIComponent(params[k])) + '"');
-      }
       return CouchDB.request("GET", path, {
-        headers: {Authorization: 'OAuth ' + d.join(', ')}
+        headers: {Authorization: OAuth.getAuthorizationHeader('', parameters)}
       });
     }
   }
@@ -70,23 +67,29 @@ couchTests.oauth = function(debug) {
         roles: ["_admin"]
       }).ok);
 
-      oauthParams = {
-        oauth_signature: "secret&",
-        oauth_signature_method: "PLAINTEXT",
-        oauth_consumer_key: "key",
-        oauth_version: "1.0"
-      }
+      var accessor = {
+        consumerSecret: 'secret',
+        tokenSecret: ''
+      };
+
+      var message = {
+        parameters: {
+          oauth_signature_method: "PLAINTEXT",
+          oauth_consumer_key: "key",
+          oauth_version: "1.0"
+        }
+      };
 
       // Get request token via Authorization header
-      xhr = oauthRequest("/_oauth/request_token", oauthParams);
+      xhr = oauthRequest("/_oauth/request_token", message, accessor);
       T(xhr.status == 200);
 
       // POST request token
-      xhr = oauthRequest("/_oauth/request_token", oauthParams, "POST");
+      xhr = oauthRequest("/_oauth/request_token", message, accessor, "POST");
       T(xhr.status == 200);
 
       // GET request token
-      xhr = oauthRequest("/_oauth/request_token", oauthParams, "GET");
+      xhr = oauthRequest("/_oauth/request_token", message, accessor, "GET");
       T(xhr.status == 200);
 
     } finally {
