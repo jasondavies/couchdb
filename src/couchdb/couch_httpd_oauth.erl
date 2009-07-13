@@ -13,11 +13,16 @@
 -module(couch_httpd_oauth).
 -include("couch_db.hrl").
 
--export([handle_oauth_req/1]).
+-export([oauth_authentication_handler/1, handle_oauth_req/1]).
 
 -import(couch_httpd, [header_value/2, send_json/4, send_method_not_allowed/2]).
 -import(erlang, [integer_to_list/2, list_to_integer/2]).
 -import(proplists, [get_value/2, get_value/3]).
+
+% OAuth auth handler using per-node user db
+oauth_authentication_handler(Req) ->
+    DbName = couch_config:get("couch_httpd_auth", "authentication_db"),
+    Req#httpd{user_ctx=#user_ctx{roles=[<<"_admin">>]}}.
 
 handle_oauth_req(#httpd{method='GET', path_parts=[_OAuth, <<"request_token">>], mochi_req=MochiReq}=Req) ->
     serve_oauth_request_token(MochiReq);
