@@ -26,6 +26,31 @@ couchTests.oauth = function(debug) {
     }
     return secret;
   }
+
+  function oauthRequest(path, params, method) {
+    var d = [];
+    if (method == "POST" || method == "GET") {
+      for (k in params) {
+        d.push(encodeURIComponent(k) + '=' + encodeURIComponent(encodeURIComponent(params[k])));
+      }
+      if (method == "GET") {
+        return CouchDB.request("GET", path + '?' + d.join('&'));
+      } else {
+        return CouchDB.request("POST", path, {
+          headers: {"Content-Type": "application/x-www-form-urlencoded"},
+          body: d.join('&')
+        });
+      }
+    } else {
+      for (k in params) {
+        d.push(encodeURIComponent(k) + '="' + encodeURIComponent(encodeURIComponent(params[k])) + '"');
+      }
+      return CouchDB.request("GET", path, {
+        headers: {Authorization: 'OAuth ' + d.join(', ')}
+      });
+    }
+  }
+
   // this function will be called on the modified server
   var testFun = function () {
     try {
@@ -45,23 +70,23 @@ couchTests.oauth = function(debug) {
         roles: ["_admin"]
       }).ok);
 
+      oauthParams = {
+        oauth_signature: "secret&",
+        oauth_signature_method: "PLAINTEXT",
+        oauth_consumer_key: "key",
+        oauth_version: "1.0"
+      }
+
       // Get request token via Authorization header
-      xhr = CouchDB.request("GET", "/_oauth/request_token", {
-        headers: {Authorization: 'OAuth oauth_signature="secret%2526", oauth_signature_method="PLAINTEXT", oauth_consumer_key="key", oauth_version="1.0"'}
-      });
+      xhr = oauthRequest("/_oauth/request_token", oauthParams);
       T(xhr.status == 200);
 
       // POST request token
-      xhr = CouchDB.request("POST", "/_oauth/request_token", {
-        headers: {"Content-Type": "application/x-www-form-urlencoded"},
-        body: "oauth_signature=secret%2526&oauth_signature_method=PLAINTEXT&oauth_consumer_key=key"
-      });
+      xhr = oauthRequest("/_oauth/request_token", oauthParams, "POST");
       T(xhr.status == 200);
 
       // GET request token
-      xhr = CouchDB.request("GET", "/_oauth/request_token?oauth_signature=secret%2526&oauth_signature_method=PLAINTEXT&oauth_consumer_key=key", {
-        headers: {"Content-Type": "application/x-www-form-urlencoded"}
-      });
+      xhr = oauthRequest("/_oauth/request_token", oauthParams, "GET");
       T(xhr.status == 200);
 
     } finally {
