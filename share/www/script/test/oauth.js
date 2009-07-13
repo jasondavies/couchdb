@@ -45,9 +45,22 @@ couchTests.oauth = function(debug) {
         roles: ["_admin"]
       }).ok);
 
-      // Get request token
-      xhr = CouchDB.request("GET", "/_oauth/request_token?oauth_signature=secret%2526&oauth_signature_method=PLAINTEXT&oauth_consumer_key=key", {
+      // Get request token via Authorization header
+      xhr = CouchDB.request("GET", "/_oauth/request_token", {
+        headers: {Authorization: 'OAuth oauth_signature="secret%2526", oauth_signature_method="PLAINTEXT", oauth_consumer_key="key", oauth_version="1.0"'}
+      });
+      T(xhr.status == 200);
+
+      // POST request token
+      xhr = CouchDB.request("POST", "/_oauth/request_token", {
         headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: "oauth_signature=secret%2526&oauth_signature_method=PLAINTEXT&oauth_consumer_key=key"
+      });
+      T(xhr.status == 200);
+
+      // GET request token
+      xhr = CouchDB.request("GET", "/_oauth/request_token?oauth_signature=secret%2526&oauth_signature_method=PLAINTEXT&oauth_consumer_key=key", {
+        headers: {"Content-Type": "application/x-www-form-urlencoded"}
       });
       T(xhr.status == 200);
 

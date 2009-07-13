@@ -24,9 +24,9 @@ oauth_authentication_handler(Req) ->
     DbName = couch_config:get("couch_httpd_auth", "authentication_db"),
     Req#httpd{user_ctx=#user_ctx{roles=[<<"_admin">>]}}.
 
-handle_oauth_req(#httpd{method='GET', path_parts=[_OAuth, <<"request_token">>], mochi_req=MochiReq}=Req) ->
+handle_oauth_req(#httpd{path_parts=[_OAuth, <<"request_token">>], mochi_req=MochiReq}=Req) ->
     serve_oauth_request_token(MochiReq);
-handle_oauth_req(#httpd{method='GET', path_parts=[_OAuth, <<"access_token">>], mochi_req=MochiReq}=Req) ->
+handle_oauth_req(#httpd{path_parts=[_OAuth, <<"access_token">>], mochi_req=MochiReq}=Req) ->
     serve_oauth_access_token(MochiReq).
 
 serve_oauth_request_token(Request) ->
@@ -34,6 +34,15 @@ serve_oauth_request_token(Request) ->
         'GET' ->
             serve_oauth(Request, fun(URL, Params, Consumer, Signature) ->
                 case oauth:verify(Signature, "GET", URL, Params, Consumer, "") of
+                    true ->
+                        ok(Request, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
+                    false ->
+                        bad(Request, "Invalid signature value.")
+                end
+            end);
+        'POST' ->
+            serve_oauth(Request, fun(URL, Params, Consumer, Signature) ->
+                case oauth:verify(Signature, "POST", URL, Params, Consumer, "") of
                     true ->
                         ok(Request, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
                     false ->
@@ -86,7 +95,38 @@ serve_echo(Request) ->
     end.
  
 serve_oauth(Request, Fun) ->
-    Params = Request:parse_qs(),
+    % 1. In the HTTP Authorization header as defined in OAuth HTTP Authorization Scheme.
+    % 2. As the HTTP POST request body with a content-type of application/x-www-form-urlencoded.
+    % 3. Added to the URLs in the query part (as defined by [RFC3986] section 3).
+    AuthorizationHeader = Request:get_header_value("authorization"),
+    OAuthHeader = case AuthorizationHeader of
+        undefined ->
+            undefined;
+        Else ->
+            [Head | Tail] = re:split(Else, "\\s", [{parts, 2}, {return, list}]),
+            case string:to_lower(Head) of
+                "oauth" -> [Rest] = Tail, Rest;
+                _Else -> undefined
+            end
+    end,
+    Params = case OAuthHeader of 
+        undefined ->
+            case Request:get(method) of
+                'POST' ->
+                    case Request:get_primary_header_value("content-type") of
+                        "application/x-www-form-urlencoded" ++ _ ->
+                            mochiweb_util:parse_qs(Request:recv_body());
+                        _ ->
+                            Request:parse_qs()
+                    end;
+                _OtherMethod ->
+                    Request:parse_qs()
+            end;
+        HeaderString ->
+            ?LOG_DEBUG("OAuth Header: ~p", [HeaderString]),
+            oauth_uri:params_from_header_string(HeaderString)
+    end,
+    ?LOG_DEBUG("OAuth Params: ~p", [Params]),
     case get_value("oauth_version", Params, "1.0") of
         "1.0" ->
             ConsumerKey = get_value("oauth_consumer_key", Params),
