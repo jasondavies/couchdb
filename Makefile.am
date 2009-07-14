@@ -1,14 +1,14 @@
 ## Licensed under the Apache License, Version 2.0 (the "License"); you may not
-## use this file except in compliance with the License.  You may obtain a copy
-## of the License at
+## use this file except in compliance with the License. You may obtain a copy of
+## the License at
 ##
 ##   http://www.apache.org/licenses/LICENSE-2.0
 ##
 ## Unless required by applicable law or agreed to in writing, software
 ## distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
-## License for the specific language governing permissions and limitations
-## under the License.
+## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+## License for the specific language governing permissions and limitations under
+## the License.
 
 SUBDIRS = bin etc src/couchdb src/erlang-oauth src/ibrowse src/mochiweb share test var utils
 
@@ -68,6 +68,11 @@ local-clean: maintainer-clean
 	rm -f $(top_srcdir)/*.tar.gz.*
 	rm -fr $(top_srcdir)/tmp
 	find $(top_srcdir) -name Makefile.in -exec rm {} \;
+
+distcheck-hook:
+	grep -rL 'http://www.apache.org/licenses/LICENSE-2.0' * \
+            | grep -vf license.skip; \
+        test "$$?" -eq 1
 
 .PHONY: distsign
 distsign: distcheck

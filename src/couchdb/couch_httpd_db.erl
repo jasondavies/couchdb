@@ -1,12 +1,12 @@
 % Licensed under the Apache License, Version 2.0 (the "License"); you may not
-% use this file except in compliance with the License.  You may obtain a copy of
+% use this file except in compliance with the License. You may obtain a copy of
 % the License at
 %
 %   http://www.apache.org/licenses/LICENSE-2.0
 %
 % Unless required by applicable law or agreed to in writing, software
 % distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 % License for the specific language governing permissions and limitations under
 % the License.
 
@@ -182,9 +182,7 @@ handle_design_info_req(#httpd{
             path_parts=[_DbName, _Design, DesignName, _]
         }=Req, Db) ->
     DesignId = <<"_design/", DesignName/binary>>,
-    ?LOG_ERROR("DesignId ~p",[DesignId]),
     {ok, GroupInfoList} = couch_view:get_group_info(Db, DesignId),
-    ?LOG_ERROR("GroupInfoList ~p",[GroupInfoList]),
     send_json(Req, 200, {[
         {name, DesignName},
         {view_index, {GroupInfoList}}
@@ -783,7 +781,7 @@ db_attachment_req(#httpd{method='GET'}=Req, Db, DocId, FileNameParts) ->
                 % My understanding of http://www.faqs.org/rfcs/rfc2616.html
                 % says that we should not use Content-Length with a chunked
                 % encoding. Turning this off makes libcurl happy, but I am
-                % open to discussion. 
+                % open to discussion.
                 % {"Content-Length", integer_to_list(couch_doc:bin_size(Bin))}
                 ]),
             couch_doc:bin_foldl(Bin,
@@ -843,14 +841,14 @@ db_attachment_req(#httpd{method=Method}=Req, Db, DocId, FileNameParts)
     },
     {ok, UpdatedRev} = couch_db:update_doc(Db, DocEdited, []),
     #db{name=DbName} = Db,
-    
+
     {Status, Headers} = case Method of
         'DELETE' ->
             {200, []};
         _ ->
-            {201, [{"Location", absolute_uri(Req, "/" ++ 
-                binary_to_list(DbName) ++ "/" ++ 
-                binary_to_list(DocId) ++ "/" ++ 
+            {201, [{"Location", absolute_uri(Req, "/" ++
+                binary_to_list(DbName) ++ "/" ++
+                binary_to_list(DocId) ++ "/" ++
                 binary_to_list(FileName)
             )}]}
         end,
@@ -872,7 +870,7 @@ parse_doc_format(FormatStr) when is_list(FormatStr) ->
         _Else -> throw({bad_request, <<"Invalid doc format">>})
     end;
 parse_doc_format(_BadFormatStr) ->
-    throw({bad_request, <<"Invalid doc format">>}).   
+    throw({bad_request, <<"Invalid doc format">>}).
 
 parse_doc_query(Req) ->
     lists:foldl(fun({Key,Value}, Args) ->
