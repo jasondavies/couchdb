@@ -13,6 +13,8 @@
 couchTests.oauth = function(debug) {
   // This tests OAuth authentication.
 
+  var authorization_url = "/_oauth/authorize";
+
   var db = new CouchDB("test_suite_db");
   db.deleteDb();
   db.createDb();
@@ -92,18 +94,28 @@ couchTests.oauth = function(debug) {
       xhr = oauthRequest("/_oauth/request_token", message, accessor, "GET");
       T(xhr.status == 200);
 
+      responseMessage = OAuth.decodeForm(xhr.responseText);
+
+      // Obtaining User Authorization
+      xhr = CouchDB.request("GET", authorization_url + '?oauth_token=' + responseMessage.oauth_token);
+      T(xhr.status == 200);
+
     } finally {
     }
   };
 
   run_on_modified_server(
     [{section: "httpd",
-      key: "authentication_handler",
-      value: "{couch_httpd_oauth, oauth_authentication_handler}"},
+      key: "authentication_handlers",
+      value: "{couch_httpd_oauth, oauth_authentication_handler}, {couch_httpd_auth, cookie_authentication_handler}, {couch_httpd_auth, default_authentication_handler}"},
+     {section: "httpd",
+      key: "WWW-Authenticate", value: '["Basic realm=\\"administrator\\"", "OAuth"]'},
      {section: "couch_httpd_auth",
       key: "secret", value: generateSecret(64)},
      {section: "couch_httpd_auth",
-      key: "authentication_db", value: "test_suite_users"}],
+      key: "authentication_db", value: "test_suite_users"},
+     {section: "couch_httpd_oauth",
+      key: "authorization_url", value: authorization_url}],
     testFun
   );
 };

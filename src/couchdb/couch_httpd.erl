@@ -111,6 +111,9 @@ make_arity_2_fun(SpecStr) ->
         fun(Arg1, Arg2) -> apply(Mod, Fun, [Arg1, Arg2]) end
     end.
 
+% SpecStr is "{my_module, my_fun}, {my_module2, my_fun2}"
+make_arity_1_fun_list(SpecStr) ->
+    [make_arity_1_fun(FunSpecStr) || FunSpecStr <- re:split(SpecStr, "(?<=})\\s*,\\s*(?={)", [{return, list}])].
 
 stop() ->
     mochiweb_http:stop(?MODULE).
@@ -119,8 +122,8 @@ stop() ->
 handle_request(MochiReq, DefaultFun,
         UrlHandlers, DbUrlHandlers, DesignUrlHandlers) ->
     Begin = now(),
-    AuthenticationFun = make_arity_1_fun(
-            couch_config:get("httpd", "authentication_handler")),
+    AuthenticationFuns = make_arity_1_fun_list(
+            couch_config:get("httpd", "authentication_handlers")),
     % for the path, use the raw path with the query string and fragment
     % removed, but URL quoting left intact
     RawUri = MochiReq:get(raw_path),
@@ -171,7 +174,7 @@ handle_request(MochiReq, DefaultFun,
 
     {ok, Resp} =
     try
-        HandlerFun(AuthenticationFun(HttpReq))
+        lists:foldl(fun(Fun, Req) -> Fun(Req) end, HttpReq, AuthenticationFuns ++ [HandlerFun])
     catch
         throw:Error ->
             % ?LOG_DEBUG("Minor error in HTTP request: ~p",[Error]),
@@ -453,7 +456,7 @@ send_error(_Req, {already_sent, Resp, _Error}) ->
 
 send_error(#httpd{mochi_req=MochiReq}=Req, Error) ->
     {Code, ErrorStr, ReasonStr} = error_info(Error),
-    if Code == 401 ->     
+    if Code == 401 ->
         case MochiReq:get_header_value("X-CouchDB-WWW-Authenticate") of
         undefined ->
             case couch_config:get("httpd", "WWW-Authenticate", nil) of

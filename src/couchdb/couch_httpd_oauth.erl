@@ -24,9 +24,11 @@ oauth_authentication_handler(Req) ->
     DbName = couch_config:get("couch_httpd_auth", "authentication_db"),
     Req#httpd{user_ctx=#user_ctx{roles=[<<"_admin">>]}}.
 
-handle_oauth_req(#httpd{path_parts=[_OAuth, <<"request_token">>], mochi_req=MochiReq}=Req) ->
+handle_oauth_req(#httpd{path_parts=[_OAuth, <<"request_token">>], mochi_req=MochiReq}) ->
     serve_oauth_request_token(MochiReq);
-handle_oauth_req(#httpd{path_parts=[_OAuth, <<"access_token">>], mochi_req=MochiReq}=Req) ->
+handle_oauth_req(#httpd{path_parts=[_OAuth, <<"authorize">>], mochi_req=MochiReq}) ->
+    serve_oauth_authorize(MochiReq);
+handle_oauth_req(#httpd{path_parts=[_OAuth, <<"access_token">>], mochi_req=MochiReq}) ->
     serve_oauth_access_token(MochiReq).
 
 serve_oauth_request_token(Request) ->
@@ -44,6 +46,34 @@ serve_oauth_request_token(Request) ->
             serve_oauth(Request, fun(URL, Params, Consumer, Signature) ->
                 case oauth:verify(Signature, "POST", URL, Params, Consumer, "") of
                     true ->
+                        ok(Request, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
+                    false ->
+                        bad(Request, "Invalid signature value.")
+                end
+            end);
+        _ ->
+            method_not_allowed(Request)
+    end.
+
+% This needs to be protected i.e. force user to login using HTTP Basic Auth or form-based login.
+serve_oauth_authorize(Request) ->
+    case Request:get(method) of
+        'GET' ->
+            % Confirm with the User that they want to authenticate the Consumer
+            serve_oauth(Request, fun(URL, Params, Consumer, Signature) ->
+                case oauth:verify(Signature, "GET", URL, Params, Consumer, "") of
+                    true ->
+                        ok(Request, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
+                    false ->
+                        bad(Request, "Invalid signature value.")
+                end
+            end);
+        'POST' ->
+            % If the User has confirmed, we direct the User back to the Consumer with a verification code
+            serve_oauth(Request, fun(URL, Params, Consumer, Signature) ->
+                case oauth:verify(Signature, "POST", URL, Params, Consumer, "") of
+                    true ->
+                        %redirect(oauth_callback, oauth_token, oauth_verifier),
                         ok(Request, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
                     false ->
                         bad(Request, "Invalid signature value.")
