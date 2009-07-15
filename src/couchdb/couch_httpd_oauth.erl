@@ -20,115 +20,106 @@
 -import(proplists, [get_value/2, get_value/3]).
 
 % OAuth auth handler using per-node user db
-oauth_authentication_handler(Req) ->
-    DbName = couch_config:get("couch_httpd_auth", "authentication_db"),
-    Req#httpd{user_ctx=#user_ctx{roles=[<<"_admin">>]}}.
+oauth_authentication_handler(#httpd{mochi_req=MochiReq, method=Method, req_body=ReqBody}=Req) ->
+    Req2 = case ReqBody of
+        undefined -> Req#httpd{req_body=MochiReq:recv_body()};
+        _Else -> Req
+    end,
+    case serve_oauth(Req2, fun(URL, Params, Consumer, Signature) ->
+        case oauth:verify(Signature, Method, URL, Params, Consumer, "") of
+            true -> Req2#httpd{user_ctx=#user_ctx{roles=[<<"_admin">>]}};
+            false -> Req2
+        end
+    end) of
+        undefined -> Req2;
+        #httpd{}=Req3 -> Req3;
+        Resp -> {ok, Resp}
+    end.
 
-handle_oauth_req(#httpd{path_parts=[_OAuth, <<"request_token">>], mochi_req=MochiReq}) ->
-    serve_oauth_request_token(MochiReq);
-handle_oauth_req(#httpd{path_parts=[_OAuth, <<"authorize">>], mochi_req=MochiReq}) ->
-    serve_oauth_authorize(MochiReq);
-handle_oauth_req(#httpd{path_parts=[_OAuth, <<"access_token">>], mochi_req=MochiReq}) ->
-    serve_oauth_access_token(MochiReq).
+handle_oauth_req(#httpd{path_parts=[_OAuth, <<"request_token">>]}=Req) ->
+    {ok, serve_oauth_request_token(Req)};
+handle_oauth_req(#httpd{path_parts=[_OAuth, <<"authorize">>]}=Req) ->
+    {ok, serve_oauth_authorize(Req)};
+handle_oauth_req(#httpd{path_parts=[_OAuth, <<"access_token">>]}=Req) ->
+    {ok, serve_oauth_access_token(Req)}.
 
-serve_oauth_request_token(Request) ->
-    case Request:get(method) of
+serve_oauth_request_token(#httpd{method=Method}=Req) ->
+    case Method of
         'GET' ->
-            serve_oauth(Request, fun(URL, Params, Consumer, Signature) ->
+            serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
                 case oauth:verify(Signature, "GET", URL, Params, Consumer, "") of
                     true ->
-                        ok(Request, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
+                        ok(Req, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
                     false ->
-                        bad(Request, "Invalid signature value.")
+                        bad(Req, "Invalid signature value.")
                 end
             end);
         'POST' ->
-            serve_oauth(Request, fun(URL, Params, Consumer, Signature) ->
+            serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
                 case oauth:verify(Signature, "POST", URL, Params, Consumer, "") of
                     true ->
-                        ok(Request, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
+                        ok(Req, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
                     false ->
-                        bad(Request, "Invalid signature value.")
+                        bad(Req, "Invalid signature value.")
                 end
             end);
         _ ->
-            method_not_allowed(Request)
+            method_not_allowed(Req)
     end.
 
 % This needs to be protected i.e. force user to login using HTTP Basic Auth or form-based login.
-serve_oauth_authorize(Request) ->
-    case Request:get(method) of
+serve_oauth_authorize(#httpd{method=Method}=Req) ->
+    case Method of
         'GET' ->
             % Confirm with the User that they want to authenticate the Consumer
-            serve_oauth(Request, fun(URL, Params, Consumer, Signature) ->
+            serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
                 case oauth:verify(Signature, "GET", URL, Params, Consumer, "") of
                     true ->
-                        ok(Request, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
+                        ok(Req, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
                     false ->
-                        bad(Request, "Invalid signature value.")
+                        bad(Req, "Invalid signature value.")
                 end
             end);
         'POST' ->
             % If the User has confirmed, we direct the User back to the Consumer with a verification code
-            serve_oauth(Request, fun(URL, Params, Consumer, Signature) ->
+            serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
                 case oauth:verify(Signature, "POST", URL, Params, Consumer, "") of
                     true ->
                         %redirect(oauth_callback, oauth_token, oauth_verifier),
-                        ok(Request, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
+                        ok(Req, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
                     false ->
-                        bad(Request, "Invalid signature value.")
+                        bad(Req, "Invalid signature value.")
                 end
             end);
         _ ->
-            method_not_allowed(Request)
+            method_not_allowed(Req)
     end.
 
-serve_oauth_access_token(Request) ->
-    case Request:get(method) of
+serve_oauth_access_token(#httpd{method=Method}=Req) ->
+    case Method of
         'GET' ->
-            serve_oauth(Request, fun(URL, Params, Consumer, Signature) ->
+            serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
                 case oauth:token(Params) of
                     "requestkey" ->
                         case oauth:verify(Signature, "GET", URL, Params, Consumer, "requestsecret") of
                             true ->
-                                ok(Request, <<"oauth_token=accesskey&oauth_token_secret=accesssecret">>);
+                                ok(Req, <<"oauth_token=accesskey&oauth_token_secret=accesssecret">>);
                             false ->
-                                bad(Request, "Invalid signature value.")
+                                bad(Req, "Invalid signature value.")
                         end;
                     _ ->
-                        bad(Request, "Invalid OAuth token.")
+                        bad(Req, "Invalid OAuth token.")
                 end
             end);
         _ ->
-            method_not_allowed(Request)
+            method_not_allowed(Req)
     end.
 
-serve_echo(Request) ->
-    case Request:get(method) of
-        'GET' ->
-            serve_oauth(Request, fun(URL, Params, Consumer, Signature) ->
-                case oauth:token(Params) of
-                    "accesskey" ->
-                        case oauth:verify(Signature, "GET", URL, Params, Consumer, "accesssecret") of
-                            true ->
-                                EchoParams = lists:filter(fun({K, _}) -> not lists:prefix("oauth_", K) end, Params),
-                                ok(Request, oauth_uri:params_to_string(EchoParams));
-                            false ->
-                                bad(Request, "Invalid signature value.")
-                        end;
-                    _ ->
-                        bad(Request, "Invalid OAuth token.")
-                end
-            end);
-        _ ->
-            method_not_allowed(Request)
-    end.
- 
-serve_oauth(Request, Fun) ->
+serve_oauth(#httpd{mochi_req=MochiReq, req_body=ReqBody, method=Method}=Req, Fun) ->
     % 1. In the HTTP Authorization header as defined in OAuth HTTP Authorization Scheme.
     % 2. As the HTTP POST request body with a content-type of application/x-www-form-urlencoded.
     % 3. Added to the URLs in the query part (as defined by [RFC3986] section 3).
-    AuthorizationHeader = Request:get_header_value("authorization"),
+    AuthorizationHeader = MochiReq:get_header_value("authorization"),
     OAuthHeader = case AuthorizationHeader of
         undefined ->
             undefined;
@@ -141,16 +132,16 @@ serve_oauth(Request, Fun) ->
     end,
     Params = case OAuthHeader of 
         undefined ->
-            case Request:get(method) of
-                'POST' ->
-                    case Request:get_primary_header_value("content-type") of
+            case Method of
+                "POST" ->
+                    case MochiReq:get_primary_header_value("content-type") of
                         "application/x-www-form-urlencoded" ++ _ ->
-                            mochiweb_util:parse_qs(Request:recv_body());
+                            mochiweb_util:parse_qs(ReqBody);
                         _ ->
-                            Request:parse_qs()
+                            MochiReq:parse_qs()
                     end;
                 _OtherMethod ->
-                    Request:parse_qs()
+                    MochiReq:parse_qs()
             end;
         HeaderString ->
             ?LOG_DEBUG("OAuth Header: ~p", [HeaderString]),
@@ -159,18 +150,21 @@ serve_oauth(Request, Fun) ->
     ?LOG_DEBUG("OAuth Params: ~p", [Params]),
     case get_value("oauth_version", Params, "1.0") of
         "1.0" ->
-            ConsumerKey = get_value("oauth_consumer_key", Params),
-            SigMethod = get_value("oauth_signature_method", Params),
-            case consumer_lookup(ConsumerKey, SigMethod) of
-                none ->
-                    bad(Request, "Invalid consumer (key or signature method).");
-                Consumer ->
-                    Signature = proplists:get_value("oauth_signature", Params),
-                    URL = string:concat("http://0.0.0.0:8000", Request:get(path)),
-                    Fun(URL, proplists:delete("oauth_signature", Params), Consumer, Signature)
+            case get_value("oauth_consumer_key", Params, undefined) of
+                undefined -> undefined;
+                ConsumerKey ->
+                    SigMethod = get_value("oauth_signature_method", Params),
+                    case consumer_lookup(ConsumerKey, SigMethod) of
+                        none ->
+                            bad(Req, "Invalid consumer (key or signature method).");
+                        Consumer ->
+                            Signature = proplists:get_value("oauth_signature", Params),
+                            URL = string:concat("http://0.0.0.0:8000", MochiReq:get(path)),
+                            Fun(URL, proplists:delete("oauth_signature", Params), Consumer, Signature)
+                    end
             end;
         _ ->
-            bad(Request, "Invalid OAuth version.")
+            bad(Req, "Invalid OAuth version.")
     end.
 
 consumer_lookup("key", "PLAINTEXT") ->
@@ -182,11 +176,11 @@ consumer_lookup("key", "RSA-SHA1") ->
 consumer_lookup(_, _) ->
     none.
 
-ok(Request, Body) ->
-    Request:respond({200, [], Body}).
+ok(#httpd{mochi_req=MochiReq}, Body) ->
+    MochiReq:respond({200, [], Body}).
 
-bad(Request, Reason) ->
-    Request:respond({400, [], list_to_binary("Bad Request: " ++ Reason)}).
+bad(#httpd{mochi_req=MochiReq}, Reason) ->
+    MochiReq:respond({400, [], list_to_binary("Bad Request: " ++ Reason)}).
 
-method_not_allowed(Request) ->
-    Request:respond({405, [], <<>>}).
+method_not_allowed(#httpd{mochi_req=MochiReq}) ->
+    MochiReq:respond({405, [], <<>>}).

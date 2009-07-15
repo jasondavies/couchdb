@@ -174,11 +174,18 @@ handle_request(MochiReq, DefaultFun,
 
     {ok, Resp} =
     try
-        lists:foldl(fun(Fun, Req) -> Fun(Req) end, HttpReq, AuthenticationFuns ++ [HandlerFun])
+        % Try authentication handlers in order until one returns a result
+        case lists:foldl(fun(Fun, #httpd{user_ctx=#user_ctx{}}=Req) -> Req;
+                    (Fun, #httpd{}=Req) -> Fun(Req);
+                    (Fun, Response) -> Response
+                end, HttpReq, AuthenticationFuns) of
+            #httpd{}=Req -> HandlerFun(Req);
+            Response -> Response
+        end
     catch
         throw:Error ->
-            % ?LOG_DEBUG("Minor error in HTTP request: ~p",[Error]),
-            % ?LOG_DEBUG("Stacktrace: ~p",[erlang:get_stacktrace()]),
+            ?LOG_DEBUG("Minor error in HTTP request: ~p",[Error]),
+            ?LOG_DEBUG("Stacktrace: ~p",[erlang:get_stacktrace()]),
             send_error(HttpReq, Error);
         error:badarg ->
             ?LOG_ERROR("Badarg error in HTTP request",[]),
@@ -269,11 +276,16 @@ recv_chunked(#httpd{mochi_req=MochiReq}, MaxChunkSize, ChunkFun, InitState) ->
     % called with Length == 0 on the last time.
     MochiReq:stream_body(MaxChunkSize, ChunkFun, InitState).
 
-body(#httpd{mochi_req=MochiReq}) ->
-    % Maximum size of document PUT request body (4GB)
-    MaxSize = list_to_integer(
-        couch_config:get("couchdb", "max_document_size", "4294967296")),
-    MochiReq:recv_body(MaxSize).
+body(#httpd{mochi_req=MochiReq, req_body=ReqBody}) ->
+    case ReqBody of
+        undefined ->
+            % Maximum size of document PUT request body (4GB)
+            MaxSize = list_to_integer(
+                couch_config:get("couchdb", "max_document_size", "4294967296")),
+            MochiReq:recv_body(MaxSize);
+        _Else ->
+            ReqBody
+    end.
 
 json_body(Httpd) ->
     ?JSON_DECODE(body(Httpd)).

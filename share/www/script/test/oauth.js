@@ -97,7 +97,11 @@ couchTests.oauth = function(debug) {
       responseMessage = OAuth.decodeForm(xhr.responseText);
 
       // Obtaining User Authorization
-      xhr = CouchDB.request("GET", authorization_url + '?oauth_token=' + responseMessage.oauth_token);
+      //xhr = CouchDB.request("GET", authorization_url + '?oauth_token=' + responseMessage.oauth_token);
+      //T(xhr.status == 200);
+
+      xhr = oauthRequest("/_whoami", message, accessor);
+      console.log(xhr.responseText);
       T(xhr.status == 200);
 
     } finally {
