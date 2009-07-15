@@ -100,7 +100,7 @@ couchTests.oauth = function(debug) {
       //xhr = CouchDB.request("GET", authorization_url + '?oauth_token=' + responseMessage.oauth_token);
       //T(xhr.status == 200);
 
-      xhr = oauthRequest("/_whoami", message, accessor);
+      xhr = oauthRequest("/_session", message, accessor);
       console.log(xhr.responseText);
       T(xhr.status == 200);
 
