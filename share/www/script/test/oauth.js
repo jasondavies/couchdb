@@ -101,8 +101,10 @@ couchTests.oauth = function(debug) {
       //T(xhr.status == 200);
 
       xhr = oauthRequest("/_session", message, accessor);
-      console.log(xhr.responseText);
       T(xhr.status == 200);
+      data = JSON.parse(xhr.responseText);
+      T(data.name == "key");
+      T(data.roles[0] == "_admin");
 
     } finally {
     }

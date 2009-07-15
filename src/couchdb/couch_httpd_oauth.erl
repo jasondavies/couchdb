@@ -27,7 +27,8 @@ oauth_authentication_handler(#httpd{mochi_req=MochiReq, method=Method, req_body=
     end,
     case serve_oauth(Req2, fun(URL, Params, Consumer, Signature) ->
         case oauth:verify(Signature, Method, URL, Params, Consumer, "") of
-            true -> Req2#httpd{user_ctx=#user_ctx{roles=[<<"_admin">>]}};
+            true ->
+                set_user_ctx(Req2, Consumer);
             false -> Req2
         end
     end) of
@@ -35,6 +36,9 @@ oauth_authentication_handler(#httpd{mochi_req=MochiReq, method=Method, req_body=
         #httpd{}=Req3 -> Req3;
         Resp -> {ok, Resp}
     end.
+
+set_user_ctx(Req, {ConsumerKey, _Secret, _SignatureMethod}) ->
+    Req#httpd{user_ctx=#user_ctx{name=?l2b(ConsumerKey), roles=[<<"_admin">>]}}.
 
 handle_oauth_req(#httpd{path_parts=[_OAuth, <<"request_token">>]}=Req) ->
     {ok, serve_oauth_request_token(Req)};
