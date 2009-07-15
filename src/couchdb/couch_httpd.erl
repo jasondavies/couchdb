@@ -474,8 +474,8 @@ send_error(#httpd{mochi_req=MochiReq}=Req, Error) ->
             case couch_config:get("httpd", "WWW-Authenticate", nil) of
             nil ->
                 Headers = [];
-            Type ->
-                Headers = [{"WWW-Authenticate", Type}]
+            Types ->
+                Headers = [{"WWW-Authenticate", Type} || Type <- string:tokens(Types, ",")]
             end;
         Type ->
             Headers = [{"WWW-Authenticate", Type}]

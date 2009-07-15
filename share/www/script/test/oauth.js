@@ -115,7 +115,7 @@ couchTests.oauth = function(debug) {
       key: "authentication_handlers",
       value: "{couch_httpd_oauth, oauth_authentication_handler}, {couch_httpd_auth, cookie_authentication_handler}, {couch_httpd_auth, default_authentication_handler}"},
      {section: "httpd",
-      key: "WWW-Authenticate", value: '["Basic realm=\\"administrator\\"", "OAuth"]'},
+      key: "WWW-Authenticate", value: 'Basic realm=\\"administrator\\",OAuth'},
      {section: "couch_httpd_auth",
       key: "secret", value: generateSecret(64)},
      {section: "couch_httpd_auth",
