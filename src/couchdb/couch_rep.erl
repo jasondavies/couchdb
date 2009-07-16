@@ -84,7 +84,8 @@ replicate(Source, Target) ->
 
 -record(http_db, {
     uri,
-    headers
+    headers,
+    oauth
 }).
 
 
@@ -497,9 +498,9 @@ make_attachment_stub_receiver(Url, Headers, Name, Type, Length, Retries, Pause) 
     end.
 
 
-open_db({remote, Url, Headers})->
-    {ok, #http_db{uri=?b2l(Url), headers=Headers}, Url};
-open_db({local, DbName, UserCtx})->
+open_db({remote, Url, Headers, Auth})->
+    {ok, #http_db{uri=?b2l(Url), headers=Headers, oauth=Auth}, Url};
+open_db({local, DbName, UserCtx, _Auth})->
     case couch_db:open(DbName, [{user_ctx, UserCtx}]) of
     {ok, Db} -> {ok, Db, DbName};
     Error -> Error
@@ -601,19 +602,28 @@ do_checkpoint(Source, Target, Context, NewSeqNum, Stats) ->
 
     end.
 
-do_http_request(Url, Action, Headers) ->
-    do_http_request(Url, Action, Headers, []).
+do_http_request(Url, Action, Headers, OAuth) ->
+    do_http_request(Url, Action, Headers, OAuth, []).
 
-do_http_request(Url, Action, Headers, JsonBody) ->
-    do_http_request(Url, Action, Headers, JsonBody, 10, 1000).
+do_http_request(Url, Action, Headers, OAuth, JsonBody) ->
+    % Add OAuth header
+    Headers0 = case OAuth of
+        {ConsumerKey, TokenSecret} ->
+            Consumer = couch_httpd_oauth:consumer_lookup(ConsumerKey, "HMAC-SHA1"),
+            Params = [],
+            [{"Authorization", "OAuth " ++ oauth:signature(Action, Url, Params, Consumer, TokenSecret)} | Headers];
+        _Else ->
+            Headers
+    end,
+    do_http_request0(Url, Action, Headers0, JsonBody, 10, 1000).
 
-do_http_request(Url, Action, Headers, Body, Retries, Pause) when is_binary(Url) ->
-    do_http_request(?b2l(Url), Action, Headers, Body, Retries, Pause);
-do_http_request(Url, Action, _Headers, _JsonBody, 0, _Pause) ->
+do_http_request0(Url, Action, Headers, Body, Retries, Pause) when is_binary(Url) ->
+    do_http_request0(?b2l(Url), Action, Headers, Body, Retries, Pause);
+do_http_request0(Url, Action, _Headers, _JsonBody, 0, _Pause) ->
     ?LOG_ERROR("couch_rep HTTP ~p request failed after 10 retries: ~s",
         [Action, Url]),
     exit({http_request_failed, ?l2b(["failed to replicate ", Url])});
-do_http_request(Url, Action, Headers, JsonBody, Retries, Pause) ->
+do_http_request0(Url, Action, Headers, JsonBody, Retries, Pause) ->
     ?LOG_DEBUG("couch_rep HTTP ~p request: ~s", [Action, Url]),
     Body =
     case JsonBody of
@@ -639,7 +649,7 @@ do_http_request(Url, Action, Headers, JsonBody, Retries, Pause) ->
         ResponseCode >= 300, ResponseCode < 400 ->
             RedirectUrl = mochiweb_headers:get_value("Location",
                 mochiweb_headers:make(ResponseHeaders)),
-            do_http_request(RedirectUrl, Action, Headers, JsonBody, Retries-1,
+            do_http_request0(RedirectUrl, Action, Headers, JsonBody, Retries-1,
                 Pause);
         ResponseCode >= 400, ResponseCode < 500 ->
             ?JSON_DECODE(ResponseBody);
@@ -647,18 +657,18 @@ do_http_request(Url, Action, Headers, JsonBody, Retries, Pause) ->
             ?LOG_INFO("retrying couch_rep HTTP ~p request in ~p seconds " ++
                 "due to 500 error: ~s", [Action, Pause/1000, Url]),
             timer:sleep(Pause),
-            do_http_request(Url, Action, Headers, JsonBody, Retries - 1, 2*Pause)
+            do_http_request0(Url, Action, Headers, JsonBody, Retries - 1, 2*Pause)
         end;
     {error, Reason} ->
         ?LOG_INFO("retrying couch_rep HTTP ~p request in ~p seconds due to " ++
             "{error, ~p}: ~s", [Action, Pause/1000, Reason, Url]),
         timer:sleep(Pause),
-        do_http_request(Url, Action, Headers, JsonBody, Retries - 1, 2*Pause)
+        do_http_request0(Url, Action, Headers, JsonBody, Retries - 1, 2*Pause)
     end.
 
-ensure_full_commit(#http_db{uri=DbUrl, headers=Headers}) ->
+ensure_full_commit(#http_db{uri=DbUrl, headers=Headers, oauth=OAuth}) ->
     {ResultProps} = do_http_request(DbUrl ++ "_ensure_full_commit", post,
-        Headers, true),
+        Headers, OAuth, true),
     true = proplists:get_value(<<"ok">>, ResultProps),
     {ok, proplists:get_value(<<"instance_start_time">>, ResultProps)};
 ensure_full_commit(Db) ->
@@ -688,16 +698,16 @@ enum_docs_since(Pid, DbSource, DbTarget, {StartSeq, RevsCount}) ->
 
 
 
-get_db_info(#http_db{uri=DbUrl, headers=Headers}) ->
-    {DbProps} = do_http_request(DbUrl, get, Headers),
+get_db_info(#http_db{uri=DbUrl, headers=Headers, oauth=OAuth}) ->
+    {DbProps} = do_http_request(DbUrl, get, Headers, OAuth),
     {ok, [{list_to_atom(?b2l(K)), V} || {K,V} <- DbProps]};
 get_db_info(Db) ->
     couch_db:get_db_info(Db).
 
-get_doc_info_list(#http_db{uri=DbUrl, headers=Headers}, StartSeq) ->
+get_doc_info_list(#http_db{uri=DbUrl, headers=Headers, oauth=OAuth}, StartSeq) ->
     Url = DbUrl ++ "_all_docs_by_seq?limit=100&startkey="
         ++ integer_to_list(StartSeq),
-    {Results} = do_http_request(Url, get, Headers),
+    {Results} = do_http_request(Url, get, Headers, OAuth),
     lists:map(fun({RowInfoList}) ->
         {RowValueProps} = proplists:get_value(<<"value">>, RowInfoList),
         Seq = proplists:get_value(<<"key">>, RowInfoList),
@@ -720,9 +730,9 @@ get_doc_info_list(DbSource, StartSeq) ->
     end, {0, []}),
     lists:reverse(DocInfoList).
 
-get_missing_revs(#http_db{uri=DbUrl, headers=Headers}, DocIdRevsList) ->
+get_missing_revs(#http_db{uri=DbUrl, headers=Headers, oauth=OAuth}, DocIdRevsList) ->
     DocIdRevsList2 = [{Id, couch_doc:rev_to_strs(Revs)} || {Id, Revs} <- DocIdRevsList],
-    {ResponseMembers} = do_http_request(DbUrl ++ "_missing_revs", post, Headers,
+    {ResponseMembers} = do_http_request(DbUrl ++ "_missing_revs", post, Headers, OAuth,
             {DocIdRevsList2}),
     {DocMissingRevsList} = proplists:get_value(<<"missing_revs">>, ResponseMembers),
     DocMissingRevsList2 = [{Id, couch_doc:parse_revs(MissingRevStrs)} || {Id, MissingRevStrs} <- DocMissingRevsList],
@@ -731,9 +741,9 @@ get_missing_revs(Db, DocId) ->
     couch_db:get_missing_revs(Db, DocId).
 
 
-open_doc(#http_db{uri=DbUrl, headers=Headers}, DocId, Options) ->
+open_doc(#http_db{uri=DbUrl, headers=Headers, oauth=OAuth}, DocId, Options) ->
     [] = Options,
-    case do_http_request(DbUrl ++ url_encode(DocId), get, Headers) of
+    case do_http_request(DbUrl ++ url_encode(DocId), get, Headers, OAuth) of
     {[{<<"error">>, ErrId}, {<<"reason">>, Reason}]} ->
         {couch_util:to_existing_atom(ErrId), Reason};
     Doc  ->
@@ -742,7 +752,7 @@ open_doc(#http_db{uri=DbUrl, headers=Headers}, DocId, Options) ->
 open_doc(Db, DocId, Options) ->
     couch_db:open_doc(Db, DocId, Options).
 
-open_doc_revs(#http_db{uri=DbUrl, headers=Headers} = DbS, DocId, Revs0,
+open_doc_revs(#http_db{uri=DbUrl, headers=Headers, oauth=OAuth} = DbS, DocId, Revs0,
         [latest]) ->
     Revs = couch_doc:rev_to_strs(Revs0),
     BaseUrl = DbUrl ++ url_encode(DocId) ++ "?revs=true&latest=true",
@@ -753,18 +763,18 @@ open_doc_revs(#http_db{uri=DbUrl, headers=Headers} = DbS, DocId, Revs0,
     JsonResults = case length(Revs) > MaxN of
     false ->
         Url = ?l2b(BaseUrl ++ "&open_revs=" ++ ?JSON_ENCODE(Revs)),
-        do_http_request(Url, get, Headers);
+        do_http_request(Url, get, Headers, OAuth);
     true ->
         {_, Rest, Acc} = lists:foldl(
         fun(Rev, {Count, RevsAcc, AccResults}) when Count =:= MaxN ->
             QSRevs = ?JSON_ENCODE(lists:reverse(RevsAcc)),
             Url = ?l2b(BaseUrl ++ "&open_revs=" ++ QSRevs),
-            {1, [Rev], AccResults++do_http_request(Url, get, Headers)};
+            {1, [Rev], AccResults++do_http_request(Url, get, Headers, OAuth)};
         (Rev, {Count, RevsAcc, AccResults}) ->
             {Count+1, [Rev|RevsAcc], AccResults}
         end, {0, [], []}, Revs),
         Acc ++ do_http_request(?l2b(BaseUrl ++ "&open_revs=" ++
-            ?JSON_ENCODE(lists:reverse(Rest))), get, Headers)
+            ?JSON_ENCODE(lists:reverse(Rest))), get, Headers, OAuth)
     end,
 
     Results =
@@ -827,10 +837,10 @@ binary_memory(Pid) ->
     lists:foldl(fun({_Id, Size, _NRefs}, Acc) -> Size+Acc end,
         0, element(2,process_info(Pid, binary))).
 
-update_doc(#http_db{uri=DbUrl, headers=Headers}, #doc{id=DocId}=Doc, Options) ->
+update_doc(#http_db{uri=DbUrl, headers=Headers, oauth=OAuth}, #doc{id=DocId}=Doc, Options) ->
     [] = Options,
     Url = DbUrl ++ url_encode(DocId),
-    {ResponseMembers} = do_http_request(Url, put, Headers,
+    {ResponseMembers} = do_http_request(Url, put, Headers, OAuth,
             couch_doc:to_json_obj(Doc, [attachments])),
     Rev = proplists:get_value(<<"rev">>, ResponseMembers),
     {ok, couch_doc:parse_rev(Rev)};
@@ -839,10 +849,10 @@ update_doc(Db, Doc, Options) ->
 
 update_docs(_, [], _, _) ->
     {ok, []};
-update_docs(#http_db{uri=DbUrl, headers=Headers}, Docs, [], replicated_changes) ->
+update_docs(#http_db{uri=DbUrl, headers=Headers, oauth=OAuth}, Docs, [], replicated_changes) ->
     JsonDocs = [couch_doc:to_json_obj(Doc, [revs,attachments]) || Doc <- Docs],
     ErrorsJson =
-        do_http_request(DbUrl ++ "_bulk_docs", post, Headers,
+        do_http_request(DbUrl ++ "_bulk_docs", post, Headers, OAuth,
                 {[{new_edits, false}, {docs, JsonDocs}]}),
     ErrorsList =
     lists:map(

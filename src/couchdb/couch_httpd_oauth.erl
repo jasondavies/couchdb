@@ -13,7 +13,7 @@
 -module(couch_httpd_oauth).
 -include("couch_db.hrl").
 
--export([oauth_authentication_handler/1, handle_oauth_req/1]).
+-export([oauth_authentication_handler/1, handle_oauth_req/1, consumer_lookup/2]).
 
 -import(couch_httpd, [header_value/2, send_json/4, send_method_not_allowed/2]).
 -import(erlang, [integer_to_list/2, list_to_integer/2]).
@@ -37,6 +37,7 @@ oauth_authentication_handler(#httpd{mochi_req=MochiReq, method=Method, req_body=
         Resp -> {ok, Resp}
     end.
 
+% Look up the consumer key and get the roles to give the consumer
 set_user_ctx(Req, {ConsumerKey, _Secret, _SignatureMethod}) ->
     Req#httpd{user_ctx=#user_ctx{name=?l2b(ConsumerKey), roles=[<<"_admin">>]}}.
 

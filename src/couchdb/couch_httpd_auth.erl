@@ -19,6 +19,7 @@
 -export([cookie_auth_header/2]).
 -export([handle_session_req/1]).
 -export([handle_user_req/1]).
+-export([get_user/2]).
 
 -import(couch_httpd, [header_value/2, send_json/2,send_json/4, send_method_not_allowed/2]).
 -import(erlang, [integer_to_list/2, list_to_integer/2]).

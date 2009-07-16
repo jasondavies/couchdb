@@ -88,13 +88,14 @@ fix_db_url(UrlBin) ->
 get_rep_endpoint(_Req, {Props}) ->
     Url = proplists:get_value(<<"url">>, Props),
     {BinHeaders} = proplists:get_value(<<"headers">>, Props, {[]}),
-    {remote, fix_db_url(Url), [{?b2l(K),?b2l(V)} || {K,V} <- BinHeaders]};
+    {Auth} = proplists:get_value(<<"auth">>, Props, {[]}),
+    {remote, fix_db_url(Url), [{?b2l(K),?b2l(V)} || {K,V} <- BinHeaders], Auth};
 get_rep_endpoint(_Req, <<"http://",_/binary>>=Url) ->
-    {remote, fix_db_url(Url), []};
+    {remote, fix_db_url(Url), [], []};
 get_rep_endpoint(_Req, <<"https://",_/binary>>=Url) ->
-    {remote, fix_db_url(Url), []};
+    {remote, fix_db_url(Url), [], []};
 get_rep_endpoint(#httpd{user_ctx=UserCtx}, <<DbName/binary>>) ->
-    {local, DbName, UserCtx}.
+    {local, DbName, UserCtx, []}.
 
 handle_replicate_req(#httpd{method='POST'}=Req) ->
     {Props} = couch_httpd:json_body_obj(Req),
