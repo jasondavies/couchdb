@@ -120,6 +120,8 @@ couchTests.oauth = function(debug) {
       key: "secret", value: generateSecret(64)},
      {section: "couch_httpd_auth",
       key: "authentication_db", value: "test_suite_users"},
+     {section: "oauth_consumers",
+      key: "key", value: "secret"},
      {section: "couch_httpd_oauth",
       key: "authorization_url", value: authorization_url}],
     testFun

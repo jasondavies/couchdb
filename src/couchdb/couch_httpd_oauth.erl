@@ -171,14 +171,21 @@ serve_oauth(#httpd{mochi_req=MochiReq, req_body=ReqBody, method=Method}=Req, Fun
             bad(Req, "Invalid OAuth version.")
     end.
 
-consumer_lookup("key", "PLAINTEXT") ->
-    {"key", "secret", plaintext};
-consumer_lookup("key", "HMAC-SHA1") ->
-    {"key", "secret", hmac_sha1};
-consumer_lookup("key", "RSA-SHA1") ->
-    {"key", "data/rsa_cert.pem", rsa_sha1};
-consumer_lookup(_, _) ->
-    none.
+consumer_lookup(Key, MethodStr) ->
+    SignatureMethod = case MethodStr of
+        "PLAINTEXT" -> plaintext;
+        "HMAC-SHA1" -> hmac_sha1;
+        "RSA-SHA1" -> rsa_sha1;
+        _Else -> undefined
+    end,
+    case SignatureMethod of
+        undefined -> none;
+        _SupportedMethod ->
+            case couch_config:get("oauth_consumers", Key, undefined) of
+                undefined -> none;
+                Secret -> {Key, Secret, SignatureMethod}
+            end
+    end.
 
 ok(#httpd{mochi_req=MochiReq}, Body) ->
     MochiReq:respond({200, [], Body}).
