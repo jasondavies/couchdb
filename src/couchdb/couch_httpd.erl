@@ -468,20 +468,20 @@ send_error(_Req, {already_sent, Resp, _Error}) ->
 
 send_error(#httpd{mochi_req=MochiReq}=Req, Error) ->
     {Code, ErrorStr, ReasonStr} = error_info(Error),
-    if Code == 401 ->
+    Headers = if Code == 401 ->
         case MochiReq:get_header_value("X-CouchDB-WWW-Authenticate") of
         undefined ->
             case couch_config:get("httpd", "WWW-Authenticate", nil) of
             nil ->
-                Headers = [];
+                [];
             Type ->
-                Headers = {"WWW-Authenticate", Type}
+                [{"WWW-Authenticate", Type}]
             end;
         Type ->
-            Headers = [{"WWW-Authenticate", Type}]
+            [{"WWW-Authenticate", Type}]
         end;
     true ->
-        Headers = []
+        []
     end,
     send_error(Req, Code, Headers, ErrorStr, ReasonStr).
 
