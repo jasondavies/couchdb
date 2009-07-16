@@ -26,7 +26,7 @@ oauth_authentication_handler(#httpd{mochi_req=MochiReq, method=Method, req_body=
         _Else -> Req
     end,
     case serve_oauth(Req2, fun(URL, Params, Consumer, Signature) ->
-        case oauth:verify(Signature, Method, URL, Params, Consumer, "") of
+        case oauth:verify(Signature, atom_to_list(Method), URL, Params, Consumer, "") of
             true ->
                 set_user_ctx(Req2, Consumer);
             false -> Req2
@@ -163,7 +163,7 @@ serve_oauth(#httpd{mochi_req=MochiReq, req_body=ReqBody, method=Method}=Req, Fun
                             bad(Req, "Invalid consumer (key or signature method).");
                         Consumer ->
                             Signature = proplists:get_value("oauth_signature", Params),
-                            URL = string:concat("http://0.0.0.0:8000", MochiReq:get(path)),
+                            URL = couch_httpd:absolute_uri(Req, MochiReq:get(path)),
                             Fun(URL, proplists:delete("oauth_signature", Params), Consumer, Signature)
                     end
             end;

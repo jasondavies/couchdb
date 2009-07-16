@@ -76,37 +76,42 @@ couchTests.oauth = function(debug) {
         tokenSecret: ''
       };
 
-      var message = {
-        parameters: {
-          oauth_signature_method: "PLAINTEXT",
-          oauth_consumer_key: "key",
-          oauth_version: "1.0"
-        }
-      };
+      var signatureMethods = ["PLAINTEXT", "HMAC-SHA1"];
 
-      // Get request token via Authorization header
-      xhr = oauthRequest("/_oauth/request_token", message, accessor);
-      T(xhr.status == 200);
+      for (var i=0; i<signatureMethods.length; i++) {
+        var message = {
+          parameters: {
+            realm: '',
+            oauth_signature_method: signatureMethods[i],
+            oauth_consumer_key: "key",
+            oauth_version: "1.0"
+          }
+        };
 
-      // POST request token
-      xhr = oauthRequest("/_oauth/request_token", message, accessor, "POST");
-      T(xhr.status == 200);
+        // Get request token via Authorization header
+        xhr = oauthRequest("http://127.0.0.1:5984/_oauth/request_token", message, accessor);
+        T(xhr.status == 200);
 
-      // GET request token
-      xhr = oauthRequest("/_oauth/request_token", message, accessor, "GET");
-      T(xhr.status == 200);
+        // POST request token
+        xhr = oauthRequest("http://127.0.0.1:5984/_oauth/request_token", message, accessor, "POST");
+        T(xhr.status == 200);
 
-      responseMessage = OAuth.decodeForm(xhr.responseText);
+        // GET request token
+        xhr = oauthRequest("http://127.0.0.1:5984/_oauth/request_token", message, accessor, "GET");
+        T(xhr.status == 200);
 
-      // Obtaining User Authorization
-      //xhr = CouchDB.request("GET", authorization_url + '?oauth_token=' + responseMessage.oauth_token);
-      //T(xhr.status == 200);
+        responseMessage = OAuth.decodeForm(xhr.responseText);
 
-      xhr = oauthRequest("/_session", message, accessor);
-      T(xhr.status == 200);
-      data = JSON.parse(xhr.responseText);
-      T(data.name == "key");
-      T(data.roles[0] == "_admin");
+        // Obtaining User Authorization
+        //xhr = CouchDB.request("GET", authorization_url + '?oauth_token=' + responseMessage.oauth_token);
+        //T(xhr.status == 200);
+
+        xhr = oauthRequest("http://127.0.0.1:5984/_session", message, accessor);
+        T(xhr.status == 200);
+        data = JSON.parse(xhr.responseText);
+        T(data.name == "key");
+        T(data.roles[0] == "_admin");
+      }
 
     } finally {
     }
