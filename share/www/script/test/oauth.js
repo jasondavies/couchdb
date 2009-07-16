@@ -50,6 +50,8 @@ couchTests.oauth = function(debug) {
     }
   }
 
+  consumerSecret = generateSecret(64);
+
   // this function will be called on the modified server
   var testFun = function () {
     try {
@@ -70,7 +72,7 @@ couchTests.oauth = function(debug) {
       }).ok);
 
       var accessor = {
-        consumerSecret: 'secret',
+        consumerSecret: consumerSecret,
         tokenSecret: ''
       };
 
@@ -121,7 +123,7 @@ couchTests.oauth = function(debug) {
      {section: "couch_httpd_auth",
       key: "authentication_db", value: "test_suite_users"},
      {section: "oauth_consumers",
-      key: "key", value: "secret"},
+      key: "key", value: consumerSecret},
      {section: "couch_httpd_oauth",
       key: "authorization_url", value: authorization_url}],
     testFun
