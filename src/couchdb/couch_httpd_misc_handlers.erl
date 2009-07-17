@@ -88,7 +88,7 @@ fix_db_url(UrlBin) ->
 get_rep_endpoint(_Req, {Props}) ->
     Url = proplists:get_value(<<"url">>, Props),
     {BinHeaders} = proplists:get_value(<<"headers">>, Props, {[]}),
-    Auth = proplists:get_value(<<"auth">>, Props, {[]}),
+    Auth = proplists:get_value(<<"auth">>, Props, undefined),
     ?LOG_DEBUG("AUTH ~p", [Auth]),
     {remote, fix_db_url(Url), [{?b2l(K),?b2l(V)} || {K,V} <- BinHeaders], Auth};
 get_rep_endpoint(_Req, <<"http://",_/binary>>=Url) ->
