@@ -21,10 +21,10 @@
 
 % OAuth auth handler using per-node user db
 oauth_authentication_handler(#httpd{mochi_req=MochiReq, method=Method, req_body=ReqBody}=Req) ->
-    Req2 = case ReqBody of
-        undefined -> Req#httpd{req_body=MochiReq:recv_body()};
-        _Else -> Req
-    end,
+    Req2 = Req, %case ReqBody of
+        %undefined -> Req#httpd{req_body=MochiReq:recv_body()};
+        %_Else -> Req
+    %end,
     case serve_oauth(Req2, fun(URL, Params, Consumer, Signature) ->
         AccessToken = proplists:get_value("oauth_token", Params),
         TokenSecret = couch_config:get("oauth_token_secrets", AccessToken),
@@ -42,8 +42,20 @@ oauth_authentication_handler(#httpd{mochi_req=MochiReq, method=Method, req_body=
 
 % Look up the consumer key and get the roles to give the consumer
 set_user_ctx(Req, AccessToken) ->
-    Name = couch_config:get("oauth_token_users", AccessToken),
-    Req#httpd{user_ctx=#user_ctx{name=?l2b(Name), roles=[<<"_admin">>]}}.
+    DbName = couch_config:get("couch_httpd_auth", "authentication_db"),
+    couch_httpd_auth:ensure_users_db_exists(?l2b(DbName)),
+    case couch_db:open(?l2b(DbName), [{user_ctx, #user_ctx{roles=[<<"_admin">>]}}]) of
+        {ok, Db} ->
+            Name = ?l2b(couch_config:get("oauth_token_users", AccessToken)),
+            case couch_httpd_auth:get_user(Db, Name) of
+                nil -> Req;
+                User ->
+                    Roles = proplists:get_value(<<"roles">>, User, []),
+                    Req#httpd{user_ctx=#user_ctx{name=Name, roles=Roles}}
+            end;
+        _Else->
+            Req
+    end.
 
 handle_oauth_req(#httpd{path_parts=[_OAuth, <<"request_token">>]}=Req) ->
     {ok, serve_oauth_request_token(Req)};

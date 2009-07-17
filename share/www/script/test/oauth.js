@@ -75,24 +75,16 @@ couchTests.oauth = function(debug) {
     target: "http://" + host + "/test_suite_db_b"
   };
 
-  var usersDb = new CouchDB("test_suite_users");
-  usersDb.deleteDb();
-  usersDb.createDb();
-  
-  // Create a user
-  T(usersDb.save({
-    _id: "a1",
-    salt: "123",
-    password_sha: "8da1CtkFvb58LWrnup5chgdZVUs=",
-    username: "Jason Davies",
-    author: "Jason Davies",
-    type: "user",
-    roles: ["_admin"]
-  }).ok);
-
   // this function will be called on the modified server
   var testFun = function () {
     try {
+      var usersDb = new CouchDB("test_suite_users");
+      usersDb.deleteDb();
+      usersDb.createDb();
+      
+      // Create a user
+      T(CouchDB.create_user("jason", "testpassword", "test@somemail.com", ['test']).ok);
+
       var accessor = {
         consumerSecret: consumerSecret,
         tokenSecret: "bar"
@@ -134,7 +126,7 @@ couchTests.oauth = function(debug) {
         T(xhr.status == 200);
         data = JSON.parse(xhr.responseText);
         T(data.name == "jason");
-        T(data.roles[0] == "_admin");
+        T(data.roles[0] == "test");
 
         // Replication
         var result = CouchDB.replicate(dbPair.source, dbPair.target);
@@ -147,9 +139,6 @@ couchTests.oauth = function(debug) {
 
   run_on_modified_server(
     [{section: "httpd",
-      key: "authentication_handlers",
-      value: "{couch_httpd_oauth, oauth_authentication_handler}, {couch_httpd_auth, default_authentication_handler}"},
-     {section: "httpd",
       key: "WWW-Authenticate", value: 'Basic realm=\\"administrator\\",OAuth'},
      {section: "couch_httpd_auth",
       key: "secret", value: generateSecret(64)},
@@ -162,7 +151,10 @@ couchTests.oauth = function(debug) {
      {section: "oauth_token_secrets",
       key: "foo", value: "bar"},
      {section: "couch_httpd_oauth",
-      key: "authorization_url", value: authorization_url}],
+      key: "authorization_url", value: authorization_url},
+     {section: "httpd",
+      key: "authentication_handlers",
+      value: "{couch_httpd_oauth, oauth_authentication_handler}, {couch_httpd_auth, default_authentication_handler}"}],
     testFun
   );
 };
