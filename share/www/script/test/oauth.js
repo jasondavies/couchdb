@@ -133,7 +133,7 @@ couchTests.oauth = function(debug) {
         xhr = oauthRequest("http://127.0.0.1:5984/_session", message, accessor);
         T(xhr.status == 200);
         data = JSON.parse(xhr.responseText);
-        T(data.name == "key");
+        T(data.name == "jason");
         T(data.roles[0] == "_admin");
 
         // Replication
@@ -155,10 +155,10 @@ couchTests.oauth = function(debug) {
       key: "secret", value: generateSecret(64)},
      {section: "couch_httpd_auth",
       key: "authentication_db", value: "test_suite_users"},
-     {section: "oauth_consumers",
+     {section: "oauth_consumer_secrets",
       key: "key", value: consumerSecret},
-     {section: "oauth_tokens",
-      key: "foo", value: "key"},
+     {section: "oauth_token_users",
+      key: "foo", value: "jason"},
      {section: "oauth_token_secrets",
       key: "foo", value: "bar"},
      {section: "couch_httpd_oauth",

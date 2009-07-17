@@ -42,7 +42,7 @@ oauth_authentication_handler(#httpd{mochi_req=MochiReq, method=Method, req_body=
 
 % Look up the consumer key and get the roles to give the consumer
 set_user_ctx(Req, AccessToken) ->
-    Name = couch_config:get("oauth_tokens", AccessToken),
+    Name = couch_config:get("oauth_token_users", AccessToken),
     Req#httpd{user_ctx=#user_ctx{name=?l2b(Name), roles=[<<"_admin">>]}}.
 
 handle_oauth_req(#httpd{path_parts=[_OAuth, <<"request_token">>]}=Req) ->
@@ -186,7 +186,7 @@ consumer_lookup(Key, MethodStr) ->
     case SignatureMethod of
         undefined -> none;
         _SupportedMethod ->
-            case couch_config:get("oauth_consumers", Key, undefined) of
+            case couch_config:get("oauth_consumer_secrets", Key, undefined) of
                 undefined -> none;
                 Secret -> {Key, Secret, SignatureMethod}
             end
