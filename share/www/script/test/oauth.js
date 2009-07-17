@@ -20,6 +20,13 @@ couchTests.oauth = function(debug) {
   db.createDb();
   if (debug) debugger;
 
+  var dbA = new CouchDB("test_suite_db_a");
+  var dbB = new CouchDB("test_suite_db_b");
+  dbA.deleteDb();
+  dbA.createDb();
+  dbB.deleteDb();
+  dbB.createDb();
+
   // Simple secret key generator
   function generateSecret(length) {
     var secret = '';
@@ -50,7 +57,22 @@ couchTests.oauth = function(debug) {
     }
   }
 
-  consumerSecret = generateSecret(64);
+  var consumerSecret = generateSecret(64);
+
+  var host = CouchDB.host;
+  var dbPair = {
+    source: {
+      url: "http://" + host + "/test_suite_db_a",
+      auth: {
+        oauth: {
+          consumer_key: "key",
+          token_secret: consumerSecret,
+          token: ""
+        }
+      }
+    },
+    target: "http://" + host + "/test_suite_db_b"
+  };
 
   // this function will be called on the modified server
   var testFun = function () {
@@ -111,6 +133,10 @@ couchTests.oauth = function(debug) {
         data = JSON.parse(xhr.responseText);
         T(data.name == "key");
         T(data.roles[0] == "_admin");
+
+        // Replication
+        var result = CouchDB.replicate(dbPair.source, dbPair.target);
+        T(result.ok);
       }
 
     } finally {

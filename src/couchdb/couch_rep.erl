@@ -500,7 +500,7 @@ make_attachment_stub_receiver(Url, Headers, Name, Type, Length, Retries, Pause) 
 
 open_db({remote, Url, Headers, Auth})->
     {ok, #http_db{uri=?b2l(Url), headers=Headers, oauth=Auth}, Url};
-open_db({local, DbName, UserCtx, _Auth})->
+open_db({local, DbName, UserCtx})->
     case couch_db:open(DbName, [{user_ctx, UserCtx}]) of
     {ok, Db} -> {ok, Db, DbName};
     Error -> Error
@@ -605,16 +605,27 @@ do_checkpoint(Source, Target, Context, NewSeqNum, Stats) ->
 do_http_request(Url, Action, Headers, OAuth) ->
     do_http_request(Url, Action, Headers, OAuth, []).
 
-do_http_request(Url, Action, Headers, OAuth, JsonBody) ->
-    % Add OAuth header
-    Headers0 = case OAuth of
-        {ConsumerKey, TokenSecret} ->
-            Consumer = couch_httpd_oauth:consumer_lookup(ConsumerKey, "HMAC-SHA1"),
-            Params = [],
-            [{"Authorization", "OAuth " ++ oauth:signature(Action, Url, Params, Consumer, TokenSecret)} | Headers];
+do_http_request(Url, Action, Headers, Auth, JsonBody) ->
+    Headers0 = case Auth of
+        {Props} ->
+            % Add OAuth header
+            {OAuth} = proplists:get_value(<<"oauth">>, Props),
+            ?LOG_DEBUG("OAuth: ~p", [OAuth]),
+            ConsumerKey = ?b2l(proplists:get_value(<<"consumer_key">>, OAuth)),
+            TokenSecret = ?b2l(proplists:get_value(<<"token_secret">>, OAuth)),
+            Token = ?b2l(proplists:get_value(<<"token">>, OAuth)),
+            Consumer = {ConsumerKey, TokenSecret, hmac_sha1},
+            Method = case Action of
+                get -> "GET";
+                post -> "POST";
+                put -> "PUT"
+            end,
+            Params = oauth:signed_params(Method, Url, [], Consumer, Token, TokenSecret),
+            [{"Authorization", "OAuth " ++ oauth_uri:params_to_header_string(Params)} | Headers];
         _Else ->
             Headers
     end,
+    ?LOG_DEBUG("OAuth? Headers: ~p", [Headers0]),
     do_http_request0(Url, Action, Headers0, JsonBody, 10, 1000).
 
 do_http_request0(Url, Action, Headers, Body, Retries, Pause) when is_binary(Url) ->
