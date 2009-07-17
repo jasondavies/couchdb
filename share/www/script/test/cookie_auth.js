@@ -98,7 +98,7 @@ couchTests.cookie_auth = function(debug) {
       // test user creation
       T(CouchDB.create_user("test", "testpassword", "test@somemail.com", ['read', 'write']).ok);
       
-      //make sure we create a unique user
+      // make sure we create a unique user
       T(!CouchDB.create_user("test", "testpassword2", "test2@somemail.com", ['read', 'write']).ok);
       
       // test login
@@ -153,7 +153,7 @@ couchTests.cookie_auth = function(debug) {
 
   run_on_modified_server(
     [{section: "httpd",
-      key: "authentication_handler",
+      key: "authentication_handlers",
       value: "{couch_httpd_auth, cookie_authentication_handler}"},
      {section: "couch_httpd_auth",
       key: "secret", value: generateSecret(64)},
