@@ -26,10 +26,13 @@ oauth_authentication_handler(#httpd{mochi_req=MochiReq, method=Method, req_body=
         _Else -> Req
     end,
     case serve_oauth(Req2, fun(URL, Params, Consumer, Signature) ->
-        case oauth:verify(Signature, atom_to_list(Method), URL, Params, Consumer, "") of
+        AccessToken = proplists:get_value("oauth_token", Params),
+        TokenSecret = couch_config:get("oauth_token_secrets", AccessToken),
+        case oauth:verify(Signature, atom_to_list(Method), URL, Params, Consumer, TokenSecret) of
             true ->
-                set_user_ctx(Req2, Consumer);
-            false -> Req2
+                set_user_ctx(Req2, AccessToken);
+            false ->
+                Req2
         end
     end) of
         undefined -> Req2;
@@ -38,8 +41,9 @@ oauth_authentication_handler(#httpd{mochi_req=MochiReq, method=Method, req_body=
     end.
 
 % Look up the consumer key and get the roles to give the consumer
-set_user_ctx(Req, {ConsumerKey, _Secret, _SignatureMethod}) ->
-    Req#httpd{user_ctx=#user_ctx{name=?l2b(ConsumerKey), roles=[<<"_admin">>]}}.
+set_user_ctx(Req, AccessToken) ->
+    Name = couch_config:get("oauth_tokens", AccessToken),
+    Req#httpd{user_ctx=#user_ctx{name=?l2b(Name), roles=[<<"_admin">>]}}.
 
 handle_oauth_req(#httpd{path_parts=[_OAuth, <<"request_token">>]}=Req) ->
     {ok, serve_oauth_request_token(Req)};
@@ -176,7 +180,7 @@ consumer_lookup(Key, MethodStr) ->
     SignatureMethod = case MethodStr of
         "PLAINTEXT" -> plaintext;
         "HMAC-SHA1" -> hmac_sha1;
-        "RSA-SHA1" -> rsa_sha1;
+        %"RSA-SHA1" -> rsa_sha1;
         _Else -> undefined
     end,
     case SignatureMethod of

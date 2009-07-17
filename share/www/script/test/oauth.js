@@ -66,36 +66,36 @@ couchTests.oauth = function(debug) {
       auth: {
         oauth: {
           consumer_key: "key",
-          token_secret: consumerSecret,
-          token: ""
+          consumer_secret: consumerSecret,
+          token_secret: "bar",
+          token: "foo"
         }
       }
     },
     target: "http://" + host + "/test_suite_db_b"
   };
 
+  var usersDb = new CouchDB("test_suite_users");
+  usersDb.deleteDb();
+  usersDb.createDb();
+  
+  // Create a user
+  T(usersDb.save({
+    _id: "a1",
+    salt: "123",
+    password_sha: "8da1CtkFvb58LWrnup5chgdZVUs=",
+    username: "Jason Davies",
+    author: "Jason Davies",
+    type: "user",
+    roles: ["_admin"]
+  }).ok);
+
   // this function will be called on the modified server
   var testFun = function () {
     try {
-      // try using an invalid cookie
-      var usersDb = new CouchDB("test_suite_users");
-      usersDb.deleteDb();
-      usersDb.createDb();
-      
-      // Create a user
-      T(usersDb.save({
-        _id: "a1",
-        salt: "123",
-        password_sha: "8da1CtkFvb58LWrnup5chgdZVUs=",
-        username: "Jason Davies",
-        author: "Jason Davies",
-        type: "user",
-        roles: ["_admin"]
-      }).ok);
-
       var accessor = {
         consumerSecret: consumerSecret,
-        tokenSecret: ''
+        tokenSecret: "bar"
       };
 
       var signatureMethods = ["PLAINTEXT", "HMAC-SHA1"];
@@ -103,26 +103,28 @@ couchTests.oauth = function(debug) {
       for (var i=0; i<signatureMethods.length; i++) {
         var message = {
           parameters: {
-            realm: '',
+            realm: "",
             oauth_signature_method: signatureMethods[i],
             oauth_consumer_key: "key",
+            oauth_token: "foo",
+            oauth_token_secret: "bar",
             oauth_version: "1.0"
           }
         };
 
         // Get request token via Authorization header
-        xhr = oauthRequest("http://127.0.0.1:5984/_oauth/request_token", message, accessor);
-        T(xhr.status == 200);
+        //xhr = oauthRequest("http://127.0.0.1:5984/_oauth/request_token", message, accessor);
+        //T(xhr.status == 200);
 
         // POST request token
-        xhr = oauthRequest("http://127.0.0.1:5984/_oauth/request_token", message, accessor, "POST");
-        T(xhr.status == 200);
+        //xhr = oauthRequest("http://127.0.0.1:5984/_oauth/request_token", message, accessor, "POST");
+        //T(xhr.status == 200);
 
         // GET request token
-        xhr = oauthRequest("http://127.0.0.1:5984/_oauth/request_token", message, accessor, "GET");
-        T(xhr.status == 200);
+        //xhr = oauthRequest("http://127.0.0.1:5984/_oauth/request_token", message, accessor, "GET");
+        //T(xhr.status == 200);
 
-        responseMessage = OAuth.decodeForm(xhr.responseText);
+        //responseMessage = OAuth.decodeForm(xhr.responseText);
 
         // Obtaining User Authorization
         //xhr = CouchDB.request("GET", authorization_url + '?oauth_token=' + responseMessage.oauth_token);
@@ -146,7 +148,7 @@ couchTests.oauth = function(debug) {
   run_on_modified_server(
     [{section: "httpd",
       key: "authentication_handlers",
-      value: "{couch_httpd_oauth, oauth_authentication_handler}, {couch_httpd_auth, cookie_authentication_handler}, {couch_httpd_auth, default_authentication_handler}"},
+      value: "{couch_httpd_oauth, oauth_authentication_handler}, {couch_httpd_auth, default_authentication_handler}"},
      {section: "httpd",
       key: "WWW-Authenticate", value: 'Basic realm=\\"administrator\\",OAuth'},
      {section: "couch_httpd_auth",
@@ -155,6 +157,10 @@ couchTests.oauth = function(debug) {
       key: "authentication_db", value: "test_suite_users"},
      {section: "oauth_consumers",
       key: "key", value: consumerSecret},
+     {section: "oauth_tokens",
+      key: "foo", value: "key"},
+     {section: "oauth_token_secrets",
+      key: "foo", value: "bar"},
      {section: "couch_httpd_oauth",
       key: "authorization_url", value: authorization_url}],
     testFun

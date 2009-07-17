@@ -612,8 +612,9 @@ do_http_request(Url, Action, Headers, Auth, JsonBody) ->
             {OAuth} = proplists:get_value(<<"oauth">>, Props),
             ?LOG_DEBUG("OAuth: ~p", [OAuth]),
             ConsumerKey = ?b2l(proplists:get_value(<<"consumer_key">>, OAuth)),
-            TokenSecret = ?b2l(proplists:get_value(<<"token_secret">>, OAuth)),
+            ConsumerSecret = ?b2l(proplists:get_value(<<"consumer_secret">>, OAuth)),
             Token = ?b2l(proplists:get_value(<<"token">>, OAuth)),
+            TokenSecret = ?b2l(proplists:get_value(<<"token_secret">>, OAuth)),
             Consumer = {ConsumerKey, TokenSecret, hmac_sha1},
             Method = case Action of
                 get -> "GET";
