@@ -602,8 +602,8 @@ do_checkpoint(Source, Target, Context, NewSeqNum, Stats) ->
 
     end.
 
-do_http_request(Url, Action, Headers, OAuth) ->
-    do_http_request(Url, Action, Headers, OAuth, []).
+do_http_request(Url, Action, Headers, Auth) ->
+    do_http_request(Url, Action, Headers, Auth, []).
 
 do_http_request(Url, Action, Headers, Auth, JsonBody) ->
     Headers0 = case Auth of
