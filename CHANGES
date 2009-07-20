@@ -14,6 +14,7 @@ Build and System Integration:
 HTTP Interface:
 
  * Added optional cookie-based authentication handler.
+ * Added optional two-legged OAuth authentication handler.
 
 
 Version 0.9.1
@@ -25,8 +26,6 @@ Build and System Integration:
  * Fixed the environment variables shown by the configure script.
  * Fixed the build instructions shown by the configure script.
  * Updated ownership and permission advice in `README` for better security.
- * The SysV/BSD daemon script now creates the PID directory on each invocation
-   because PREFIX/var/run might be a temporary filesystem.
 
 Configuration and stats system:
 
@@ -64,13 +63,6 @@ Replication:
  * Work around a rare chunk-merging problem in ibrowse.
  * Work with documents containing Unicode characters outside the Basic
    Multilingual Plane.
-<<<<<<< HEAD:CHANGES
-
-HTTP Interface:
-
- * Added optional cookie-based authentication handler.
-=======
->>>>>>> jd-cookie-auth:CHANGES
 
 Version 0.9.0
 -------------
