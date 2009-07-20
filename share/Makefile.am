@@ -1,18 +1,19 @@
 ## Licensed under the Apache License, Version 2.0 (the "License"); you may not
-## use this file except in compliance with the License.  You may obtain a copy
-## of the License at
+## use this file except in compliance with the License. You may obtain a copy of
+## the License at
 ##
 ##   http://www.apache.org/licenses/LICENSE-2.0
 ##
 ## Unless required by applicable law or agreed to in writing, software
 ## distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
-## License for the specific language governing permissions and limitations
-## under the License.
+## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+## License for the specific language governing permissions and limitations under
+## the License.
 
 JS_FILE = server/main.js
 
 JS_FILE_COMPONENTS = \
+    server/filter.js \
     server/render.js \
     server/state.js \
     server/util.js \
@@ -72,6 +73,7 @@ nobase_dist_localdata_DATA = \
     www/_sidebar.html \
     www/index.html \
     www/config.html \
+    www/custom_test.html \
     www/database.html \
     www/document.html \
     www/replicator.html \
@@ -108,6 +110,7 @@ nobase_dist_localdata_DATA = \
     www/script/test/utf8.js \
     www/script/test/jsonp.js \
     www/script/test/attachments.js \
+    www/script/test/attachment_names.js \
     www/script/test/attachment_paths.js \
     www/script/test/attachment_views.js \
     www/script/test/design_paths.js \

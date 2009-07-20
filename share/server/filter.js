@@ -10,12 +10,14 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-var Validate = {
-  validate : function(funSrc, newDoc, oldDoc, userCtx) {
-    var validateFun = compileFunction(funSrc);
+var Filter = {
+  filter : function(docs, req, userCtx) {
+    var results = [];
     try {
-      validateFun(newDoc, oldDoc, userCtx);
-      print("1");
+      for (var i=0; i < docs.length; i++) {
+        results.push((funs[0](docs[i], req, userCtx) && true) || false);
+      };
+      respond([true, results]);
     } catch (error) {
       respond(error);
     }

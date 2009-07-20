@@ -1,12 +1,12 @@
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
-// use this file except in compliance with the License.  You may obtain a copy
-// of the License at
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at
 //
 //   http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
 
@@ -58,6 +58,10 @@ couchTests.attachments= function(debug) {
     headers:{"Content-Type": "text/plain;charset=utf-8"}
   });
   T(xhr.status == 201);
+  TEquals("/bin_doc2/foo2.txt",
+    xhr.getResponseHeader("Location").substr(-18),
+    "should return Location header to newly created or updated attachment");
+
   var rev = JSON.parse(xhr.responseText).rev;
 
   binAttDoc2 = db.open("bin_doc2");
@@ -78,7 +82,8 @@ couchTests.attachments= function(debug) {
   // test with rev, should not fail
   var xhr = CouchDB.request("DELETE", "/test_suite_db/bin_doc2/foo2.txt?rev=" + rev);
   T(xhr.status == 200);
-
+  TEquals(null, xhr.getResponseHeader("Location"),
+    "should not return Location header on DELETE request");
 
   // test binary data
   var bin_data = "JHAPDO*AU£PN ){(3u[d 93DQ9¡€])}    ææøo'∂ƒæ≤çæππ•¥∫¶®#†π¶®¥π€ª®˙π8np";
@@ -149,21 +154,20 @@ couchTests.attachments= function(debug) {
   T(xhr.status == 200);
   T(xhr.responseText == "This is a string");
 
-
   // Attachment sparseness COUCHDB-220
 
   var docs = []
   for (var i = 0; i < 5; i++) {
-      var doc = {
-	  _id: (i).toString(),
-	  _attachments:{
-	      "foo.txt": {
-		  content_type:"text/plain",
-		  data: "VGhpcyBpcyBhIGJhc2U2NCBlbmNvZGVkIHRleHQ="
-	      }
-	  }
+    var doc = {
+      _id: (i).toString(),
+      _attachments:{
+        "foo.txt": {
+          content_type:"text/plain",
+          data: "VGhpcyBpcyBhIGJhc2U2NCBlbmNvZGVkIHRleHQ="
+        }
       }
-      docs.push(doc)
+    }
+    docs.push(doc)
   }
 
   db.bulkSave(docs);
@@ -206,7 +210,6 @@ couchTests.attachments= function(debug) {
   var xhr = CouchDB.request("GET", "/test_suite_db/bin_doc5/lorem.txt");
   T(xhr.status == 200);
   var etag = xhr.getResponseHeader("etag");
-  console.log(etag)
   xhr = CouchDB.request("GET", "/test_suite_db/bin_doc5/lorem.txt", {
     headers: {"if-none-match": etag}
   });

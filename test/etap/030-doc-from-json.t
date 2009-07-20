@@ -2,10 +2,22 @@
 %% -*- erlang -*-
 %%! -pa ./src/couchdb -pa ./src/mochiweb -sasl errlog_type false -noshell
 
+% Licensed under the Apache License, Version 2.0 (the "License"); you may not
+% use this file except in compliance with the License. You may obtain a copy of
+% the License at
+%
+%   http://www.apache.org/licenses/LICENSE-2.0
+%
+% Unless required by applicable law or agreed to in writing, software
+% distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+% License for the specific language governing permissions and limitations under
+% the License.
 
 %% XXX: Figure out how to -include("couch_db.hrl")
 -record(doc, {id= <<"">>, revs={0, []}, body={[]},
-            attachments=[], deleted=false, meta=[]}).
+            atts=[], deleted=false, meta=[]}).
+-record(att, {name, type, len, md5= <<>>, revpos=0, data}).
 
 main(_) ->
     code:add_pathz("src/couchdb"),
@@ -68,11 +80,19 @@ test_from_json_success() ->
                     {<<"content_type">>, <<"application/pgp-signature">>}
                 ]}}
             ]}}]},
-            #doc{attachments=[
-                {<<"my_attachment.fu">>,
-                    {stub, <<"application/awesome">>, 45}},
-                {<<"noahs_private_key.gpg">>,
-                    {<<"application/pgp-signature">>, <<"I have a pet fish!">>}}
+            #doc{atts=[
+                #att{
+                    name = <<"my_attachment.fu">>,
+                    data = stub,
+                    type = <<"application/awesome">>,
+                    len = 45
+                },
+                #att{
+                    name = <<"noahs_private_key.gpg">>,
+                    data = <<"I have a pet fish!">>,
+                    type = <<"application/pgp-signature">>,
+                    len = 18
+                }
             ]},
             "Attachments are parsed correctly."
         },

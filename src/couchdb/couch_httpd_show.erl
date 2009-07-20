@@ -1,12 +1,12 @@
 % Licensed under the Apache License, Version 2.0 (the "License"); you may not
-% use this file except in compliance with the License.  You may obtain a copy of
+% use this file except in compliance with the License. You may obtain a copy of
 % the License at
 %
 %   http://www.apache.org/licenses/LICENSE-2.0
 %
 % Unless required by applicable law or agreed to in writing, software
 % distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 % License for the specific language governing permissions and limitations under
 % the License.
 
@@ -27,7 +27,7 @@ handle_doc_show_req(#httpd{
         path_parts=[_DbName, _Design, DesignName, _Show, ShowName, DocId]
     }=Req, Db) ->
     handle_doc_show(Req, DesignName, ShowName, DocId, Db);
-        
+
 handle_doc_show_req(#httpd{
         method='GET',
         path_parts=[_DbName, _Design, DesignName, _Show, ShowName]
@@ -78,7 +78,7 @@ handle_doc_show(Req, DesignName, ShowName, DocId, Db) ->
     DesignId = <<"_design/", DesignName/binary>>,
     #doc{body={Props}} = couch_httpd_db:couch_doc_open(Db, DesignId, nil, []),
     Lang = proplists:get_value(<<"language">>, Props, <<"javascript">>),
-    ShowSrc = get_nested_json_value({Props}, [<<"shows">>, ShowName]),
+    ShowSrc = couch_util:get_nested_json_value({Props}, [<<"shows">>, ShowName]),
     Doc = case DocId of
         nil -> nil;
         _ ->
@@ -89,7 +89,7 @@ handle_doc_show(Req, DesignName, ShowName, DocId, Db) ->
         end
     end,
     send_doc_show_response(Lang, ShowSrc, DocId, Doc, Req, Db).
-    
+
 handle_view_list_req(#httpd{method='GET',
         path_parts=[_DbName, _Design, DesignName, _List, ListName, ViewName]}=Req, Db) ->
     handle_view_list(Req, DesignName, ListName, ViewName, Db, nil);
@@ -111,18 +111,10 @@ handle_view_list(Req, DesignName, ListName, ViewName, Db, Keys) ->
     DesignId = <<"_design/", DesignName/binary>>,
     #doc{body={Props}} = couch_httpd_db:couch_doc_open(Db, DesignId, nil, []),
     Lang = proplists:get_value(<<"language">>, Props, <<"javascript">>),
-    ListSrc = get_nested_json_value({Props}, [<<"lists">>, ListName]),
+    ListSrc = couch_util:get_nested_json_value({Props}, [<<"lists">>, ListName]),
     send_view_list_response(Lang, ListSrc, ViewName, DesignId, Req, Db, Keys).
 
-get_nested_json_value({Props}, [Key|Keys]) ->
-    case proplists:get_value(Key, Props, nil) of
-    nil -> throw({not_found, <<"missing json key: ", Key/binary>>});
-    Value -> get_nested_json_value(Value, Keys)
-    end;
-get_nested_json_value(Value, []) ->
-    Value;
-get_nested_json_value(_NotJSONObj, _) ->
-    throw({not_found, json_mismatch}).
+
 
 send_view_list_response(Lang, ListSrc, ViewName, DesignId, Req, Db, Keys) ->
     Stale = couch_httpd_view:get_stale_type(Req),

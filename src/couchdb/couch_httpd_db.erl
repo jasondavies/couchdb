@@ -1,12 +1,12 @@
 % Licensed under the Apache License, Version 2.0 (the "License"); you may not
-% use this file except in compliance with the License.  You may obtain a copy of
+% use this file except in compliance with the License. You may obtain a copy of
 % the License at
 %
 %   http://www.apache.org/licenses/LICENSE-2.0
 %
 % Unless required by applicable law or agreed to in writing, software
 % distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 % License for the specific language governing permissions and limitations under
 % the License.
 
@@ -66,7 +66,6 @@ get_changes_timeout(Req, Resp) ->
 
 handle_changes_req(#httpd{method='GET',path_parts=[DbName|_]}=Req, Db) ->
     StartSeq = list_to_integer(couch_httpd:qs_value(Req, "since", "0")),
-
     {ok, Resp} = start_json_response(Req, 200),
     send_chunk(Resp, "{\"results\":[\n"),
     case couch_httpd:qs_value(Req, "continuous", "false") of
@@ -128,12 +127,10 @@ keep_sending_changes(#httpd{user_ctx=UserCtx,path_parts=[DbName|_]}=Req, Resp, D
 send_changes(Req, Resp, Db, StartSeq, Prepend0) ->
     Style = list_to_existing_atom(
             couch_httpd:qs_value(Req, "style", "main_only")),
-    couch_db:changes_since(Db, Style, StartSeq,
+    {FilterFun, EndFilterFun} = make_filter_funs(Req, Db),
+    try
+        couch_db:changes_since(Db, Style, StartSeq,
         fun([#doc_info{id=Id, high_seq=Seq}|_]=DocInfos, {_, Prepend}) ->
-            FilterFun =
-            fun(#doc_info{revs=[#rev_info{rev=Rev}|_]}) ->
-                {[{rev, couch_doc:rev_to_str(Rev)}]}
-            end,
             Results0 = [FilterFun(DocInfo) || DocInfo <- DocInfos],
             Results = [Result || Result <- Results0, Result /= null],
             case Results of
@@ -145,7 +142,44 @@ send_changes(Req, Resp, Db, StartSeq, Prepend0) ->
                                               {changes,Results}]})]),
                 {ok, {Seq, <<",\n">>}}
             end
-        end, {StartSeq, Prepend0}).
+        end, {StartSeq, Prepend0})
+    after
+        EndFilterFun()
+    end.
+
+make_filter_funs(Req, Db) ->
+    Filter = couch_httpd:qs_value(Req, "filter", ""),
+    case [list_to_binary(couch_httpd:unquote(Part))
+            || Part <- string:tokens(Filter, "/")] of
+    [] ->
+    {fun(#doc_info{revs=[#rev_info{rev=Rev}|_]}) ->
+            {[{rev, couch_doc:rev_to_str(Rev)}]}
+        end,
+        fun() -> ok end};
+    [DName, FName] ->
+        DesignId = <<"_design/", DName/binary>>,
+        #doc{body={Props}} = couch_httpd_db:couch_doc_open(Db, DesignId, nil, []),
+        Lang = proplists:get_value(<<"language">>, Props, <<"javascript">>),
+        FilterSrc = couch_util:get_nested_json_value({Props}, [<<"filters">>, FName]),
+        {ok, Pid} = couch_query_servers:start_filter(Lang, FilterSrc),
+        FilterFun = fun(DInfo = #doc_info{revs=[#rev_info{rev=Rev}|_]}) ->
+            {ok, Doc} = couch_db:open_doc(Db, DInfo),
+            {ok, Pass} = couch_query_servers:filter_doc(Pid, Doc, Req, Db),
+            case Pass of
+            true ->
+                {[{rev, couch_doc:rev_to_str(Rev)}]};
+            false ->
+                null
+            end
+        end,
+        EndFilterFun = fun() ->
+            couch_query_servers:end_filter(Pid)
+        end,
+        {FilterFun, EndFilterFun};
+    _Else ->
+        throw({bad_request, 
+            "filter parameter must be of the form `designname/filtername`"})
+    end.  
 
 handle_compact_req(#httpd{method='POST',path_parts=[DbName,_,Id|_]}=Req, _Db) ->
     ok = couch_view_compactor:start_compact(DbName, Id),
@@ -182,9 +216,7 @@ handle_design_info_req(#httpd{
             path_parts=[_DbName, _Design, DesignName, _]
         }=Req, Db) ->
     DesignId = <<"_design/", DesignName/binary>>,
-    ?LOG_ERROR("DesignId ~p",[DesignId]),
     {ok, GroupInfoList} = couch_view:get_group_info(Db, DesignId),
-    ?LOG_ERROR("GroupInfoList ~p",[GroupInfoList]),
     send_json(Req, 200, {[
         {name, DesignName},
         {view_index, {GroupInfoList}}
@@ -581,13 +613,15 @@ db_doc_req(#httpd{method='GET'}=Req, Db, DocId) ->
         [] ->
             Doc = couch_doc_open(Db, DocId, Rev, Options),
             DiskEtag = couch_httpd:doc_etag(Doc),
-            couch_httpd:etag_respond(Req, DiskEtag, fun() ->
-                Headers = case Doc#doc.meta of
-                [] -> [{"Etag", DiskEtag}]; % output etag only when we have no meta
-                _ -> []
-                end,
-                send_json(Req, 200, Headers, couch_doc:to_json_obj(Doc, Options))
-            end);
+            case Doc#doc.meta of
+            [] ->
+                % output etag only when we have no meta
+                couch_httpd:etag_respond(Req, DiskEtag, fun() -> 
+                    send_json(Req, 200, [{"Etag", DiskEtag}], couch_doc:to_json_obj(Doc, Options))
+                end);
+            _ ->
+                send_json(Req, 200, [], couch_doc:to_json_obj(Doc, Options))
+            end;
         _ ->
             {ok, Results} = couch_db:open_doc_revs(Db, DocId, Revs, Options),
             {ok, Resp} = start_json_response(Req, 200),
@@ -628,14 +662,23 @@ db_doc_req(#httpd{method='POST'}=Req, Db, DocId) ->
     Rev = couch_doc:parse_rev(list_to_binary(proplists:get_value("_rev", Form))),
     {ok, [{ok, Doc}]} = couch_db:open_doc_revs(Db, DocId, [Rev], []),
 
-    NewAttachments = [
-        {validate_attachment_name(Name), {list_to_binary(ContentType), Content}} ||
+    UpdatedAtts = [
+        #att{name=validate_attachment_name(Name),
+            type=list_to_binary(ContentType),
+            data=Content} ||
         {Name, {ContentType, _}, Content} <-
         proplists:get_all_values("_attachments", Form)
     ],
-    #doc{attachments=Attachments} = Doc,
+    #doc{atts=OldAtts} = Doc,
+    OldAtts2 = lists:flatmap(
+        fun(#att{name=OldName}=Att) ->
+            case [1 || A <- UpdatedAtts, A#att.name == OldName] of
+            [] -> [Att]; % the attachment wasn't in the UpdatedAtts, return it
+            _ -> [] % the attachment was in the UpdatedAtts, drop it
+            end
+        end, OldAtts),
     NewDoc = Doc#doc{
-        attachments = Attachments ++ NewAttachments
+        atts = UpdatedAtts ++ OldAtts2
     },
     {ok, NewRev} = couch_db:update_doc(Db, NewDoc, []),
 
@@ -738,7 +781,7 @@ couch_doc_from_req(Req, DocId, Json) ->
 
 % Useful for debugging
 % couch_doc_open(Db, DocId) ->
-%   couch_doc_open(Db, DocId, [], []).
+%   couch_doc_open(Db, DocId, nil, []).
 
 couch_doc_open(Db, DocId, Rev, Options) ->
     case Rev of
@@ -767,13 +810,12 @@ db_attachment_req(#httpd{method='GET'}=Req, Db, DocId, FileNameParts) ->
         options=Options
     } = parse_doc_query(Req),
     #doc{
-        attachments=Attachments
+        atts=Atts
     } = Doc = couch_doc_open(Db, DocId, Rev, Options),
-
-    case proplists:get_value(FileName, Attachments) of
-    undefined ->
+    case [A || A <- Atts, A#att.name == FileName] of
+    [] ->
         throw({not_found, "Document is missing attachment"});
-    {Type, Bin} ->
+    [#att{type=Type}=Att] ->
         Etag = couch_httpd:doc_etag(Doc),
         couch_httpd:etag_respond(Req, Etag, fun() ->
             {ok, Resp} = start_chunked_response(Req, 200, [
@@ -783,10 +825,10 @@ db_attachment_req(#httpd{method='GET'}=Req, Db, DocId, FileNameParts) ->
                 % My understanding of http://www.faqs.org/rfcs/rfc2616.html
                 % says that we should not use Content-Length with a chunked
                 % encoding. Turning this off makes libcurl happy, but I am
-                % open to discussion. 
+                % open to discussion.
                 % {"Content-Length", integer_to_list(couch_doc:bin_size(Bin))}
                 ]),
-            couch_doc:bin_foldl(Bin,
+            couch_doc:att_foldl(Att,
                     fun(BinSegment, _) -> send_chunk(Resp, BinSegment) end,[]),
             send_chunk(Resp, "")
         end)
@@ -800,31 +842,36 @@ db_attachment_req(#httpd{method=Method}=Req, Db, DocId, FileNameParts)
                         lists:map(fun binary_to_list/1,
                             FileNameParts),"/")),
 
-    NewAttachment = case Method of
+    NewAtt = case Method of
         'DELETE' ->
             [];
         _ ->
-            % see couch_db:doc_flush_binaries for usage of this structure
-            [{FileName, {
-                case couch_httpd:header_value(Req,"Content-Type") of
-                undefined ->
-                    % We could throw an error here or guess by the FileName.
-                    % Currently, just giving it a default.
-                    <<"application/octet-stream">>;
-                CType ->
-                    list_to_binary(CType)
-                end,
-                case couch_httpd:header_value(Req,"Content-Length") of
-                undefined ->
-                    {fun(MaxChunkSize, ChunkFun, InitState) ->
-                        couch_httpd:recv_chunked(Req, MaxChunkSize,
-                            ChunkFun, InitState)
-                    end, undefined};
-                Length ->
-                    {fun() -> couch_httpd:recv(Req, 0) end,
-                        list_to_integer(Length)}
-                end
-            }}]
+            [#att{
+                name=FileName,
+                type = case couch_httpd:header_value(Req,"Content-Type") of
+                    undefined ->
+                        % We could throw an error here or guess by the FileName.
+                        % Currently, just giving it a default.
+                        <<"application/octet-stream">>;
+                    CType ->
+                        list_to_binary(CType)
+                    end,
+                data = case couch_httpd:header_value(Req,"Content-Length") of
+                    undefined ->
+                        fun(MaxChunkSize, ChunkFun, InitState) ->
+                            couch_httpd:recv_chunked(Req, MaxChunkSize,
+                                ChunkFun, InitState)
+                        end;
+                    Length ->
+                        fun() -> couch_httpd:recv(Req, 0) end
+                    end,
+                len = case couch_httpd:header_value(Req,"Content-Length") of
+                    undefined ->
+                        undefined;
+                    Length ->
+                        list_to_integer(Length)
+                    end
+                    }]
     end,
 
     Doc = case extract_header_rev(Req, couch_httpd:qs_value(Req, "rev")) of
@@ -837,12 +884,24 @@ db_attachment_req(#httpd{method=Method}=Req, Db, DocId, FileNameParts)
             end
     end,
 
-    #doc{attachments=Attachments} = Doc,
+    #doc{atts=Atts} = Doc,
     DocEdited = Doc#doc{
-        attachments = NewAttachment ++ proplists:delete(FileName, Attachments)
+        atts = NewAtt ++ [A || A <- Atts, A#att.name /= FileName]
     },
     {ok, UpdatedRev} = couch_db:update_doc(Db, DocEdited, []),
-    send_json(Req, case Method of 'DELETE' -> 200; _ -> 201 end, {[
+    #db{name=DbName} = Db,
+
+    {Status, Headers} = case Method of
+        'DELETE' ->
+            {200, []};
+        _ ->
+            {201, [{"Location", absolute_uri(Req, "/" ++
+                binary_to_list(DbName) ++ "/" ++
+                binary_to_list(DocId) ++ "/" ++
+                binary_to_list(FileName)
+            )}]}
+        end,
+    send_json(Req,Status, Headers, {[
         {ok, true},
         {id, DocId},
         {rev, couch_doc:rev_to_str(UpdatedRev)}
@@ -860,7 +919,7 @@ parse_doc_format(FormatStr) when is_list(FormatStr) ->
         _Else -> throw({bad_request, <<"Invalid doc format">>})
     end;
 parse_doc_format(_BadFormatStr) ->
-    throw({bad_request, <<"Invalid doc format">>}).   
+    throw({bad_request, <<"Invalid doc format">>}).
 
 parse_doc_query(Req) ->
     lists:foldl(fun({Key,Value}, Args) ->
@@ -931,9 +990,9 @@ parse_copy_destination_header(Req) ->
     end.
 
 validate_attachment_names(Doc) ->
-    lists:foreach(fun({Name, _}) ->
+    lists:foreach(fun(#att{name=Name}) ->
         validate_attachment_name(Name)
-    end, Doc#doc.attachments).
+    end, Doc#doc.atts).
 
 validate_attachment_name(Name) when is_list(Name) ->
     validate_attachment_name(list_to_binary(Name));
