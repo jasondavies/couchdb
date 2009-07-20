@@ -68,7 +68,9 @@ serve_oauth_request_token(#httpd{method=Method}=Req) ->
     case Method of
         'GET' ->
             serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
-                case oauth:verify(Signature, "GET", URL, Params, Consumer, "") of
+                AccessToken = proplists:get_value("oauth_token", Params),
+                TokenSecret = couch_config:get("oauth_token_secrets", AccessToken),
+                case oauth:verify(Signature, "GET", URL, Params, Consumer, TokenSecret) of
                     true ->
                         ok(Req, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
                     false ->
@@ -77,7 +79,9 @@ serve_oauth_request_token(#httpd{method=Method}=Req) ->
             end);
         'POST' ->
             serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
-                case oauth:verify(Signature, "POST", URL, Params, Consumer, "") of
+                AccessToken = proplists:get_value("oauth_token", Params),
+                TokenSecret = couch_config:get("oauth_token_secrets", AccessToken),
+                case oauth:verify(Signature, "POST", URL, Params, Consumer, TokenSecret) of
                     true ->
                         ok(Req, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
                     false ->

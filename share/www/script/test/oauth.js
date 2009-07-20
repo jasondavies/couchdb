@@ -105,8 +105,8 @@ couchTests.oauth = function(debug) {
         };
 
         // Get request token via Authorization header
-        //xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor);
-        //T(xhr.status == 200);
+        xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor);
+        T(xhr.status == 200);
 
         // POST request token
         //xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor, "POST");
