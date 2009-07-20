@@ -109,18 +109,19 @@ couchTests.oauth = function(debug) {
         T(xhr.status == 200);
 
         // POST request token
+        //De-activated this for now as we don't need to support POSTing OAuth at least for now
         //xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor, "POST");
         //T(xhr.status == 200);
 
         // GET request token
-        //xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor, "GET");
-        //T(xhr.status == 200);
+        xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor, "GET");
+        T(xhr.status == 200);
 
-        //responseMessage = OAuth.decodeForm(xhr.responseText);
+        responseMessage = OAuth.decodeForm(xhr.responseText);
 
         // Obtaining User Authorization
-        //xhr = CouchDB.request("GET", authorization_url + '?oauth_token=' + responseMessage.oauth_token);
-        //T(xhr.status == 200);
+        xhr = CouchDB.request("GET", authorization_url + '?oauth_token=' + responseMessage.oauth_token);
+        T(xhr.status == 200);
 
         xhr = oauthRequest("http://" + host + "/_session", message, accessor);
         T(xhr.status == 200);

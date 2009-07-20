@@ -98,7 +98,9 @@ serve_oauth_authorize(#httpd{method=Method}=Req) ->
         'GET' ->
             % Confirm with the User that they want to authenticate the Consumer
             serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
-                case oauth:verify(Signature, "GET", URL, Params, Consumer, "") of
+                AccessToken = proplists:get_value("oauth_token", Params),
+                TokenSecret = couch_config:get("oauth_token_secrets", AccessToken),
+                case oauth:verify(Signature, "GET", URL, Params, Consumer, TokenSecret) of
                     true ->
                         ok(Req, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
                     false ->
@@ -108,7 +110,9 @@ serve_oauth_authorize(#httpd{method=Method}=Req) ->
         'POST' ->
             % If the User has confirmed, we direct the User back to the Consumer with a verification code
             serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
-                case oauth:verify(Signature, "POST", URL, Params, Consumer, "") of
+                AccessToken = proplists:get_value("oauth_token", Params),
+                TokenSecret = couch_config:get("oauth_token_secrets", AccessToken),
+                case oauth:verify(Signature, "POST", URL, Params, Consumer, TokenSecret) of
                     true ->
                         %redirect(oauth_callback, oauth_token, oauth_verifier),
                         ok(Req, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
