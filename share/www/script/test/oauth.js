@@ -105,15 +105,15 @@ couchTests.oauth = function(debug) {
         };
 
         // Get request token via Authorization header
-        //xhr = oauthRequest("http://127.0.0.1:5984/_oauth/request_token", message, accessor);
+        //xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor);
         //T(xhr.status == 200);
 
         // POST request token
-        //xhr = oauthRequest("http://127.0.0.1:5984/_oauth/request_token", message, accessor, "POST");
+        //xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor, "POST");
         //T(xhr.status == 200);
 
         // GET request token
-        //xhr = oauthRequest("http://127.0.0.1:5984/_oauth/request_token", message, accessor, "GET");
+        //xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor, "GET");
         //T(xhr.status == 200);
 
         //responseMessage = OAuth.decodeForm(xhr.responseText);
@@ -122,7 +122,7 @@ couchTests.oauth = function(debug) {
         //xhr = CouchDB.request("GET", authorization_url + '?oauth_token=' + responseMessage.oauth_token);
         //T(xhr.status == 200);
 
-        xhr = oauthRequest("http://127.0.0.1:5984/_session", message, accessor);
+        xhr = oauthRequest("http://" + host + "/_session", message, accessor);
         T(xhr.status == 200);
         data = JSON.parse(xhr.responseText);
         T(data.name == "jason");
