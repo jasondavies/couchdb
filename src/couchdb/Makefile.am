@@ -1,14 +1,16 @@
 ## Licensed under the Apache License, Version 2.0 (the "License"); you may not
-## use this file except in compliance with the License.  You may obtain a copy
-## of the License at
+## use this file except in compliance with the License. You may obtain a copy of
+## the License at
 ##
 ##   http://www.apache.org/licenses/LICENSE-2.0
 ##
 ## Unless required by applicable law or agreed to in writing, software
 ## distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 ## License for the specific language governing permissions and limitations under
 ## the License.
+
+SUBDIRS = priv
 
 ICU_LOCAL_FLAGS = $(ICU_LOCAL_CFLAGS) $(ICU_LOCAL_LDFLAGS)
 
@@ -71,6 +73,7 @@ source_files = \
     couch_query_servers.erl \
     couch_ref_counter.erl \
     couch_rep.erl \
+    couch_rep_changes_feed.erl \
     couch_rep_sup.erl \
     couch_server.erl \
     couch_server_sup.erl \
@@ -117,6 +120,7 @@ compiled_files = \
     couch_query_servers.beam \
     couch_ref_counter.beam \
     couch_rep.beam \
+    couch_rep_changes_feed.beam \
     couch_rep_sup.beam \
     couch_server.beam \
     couch_server_sup.beam \

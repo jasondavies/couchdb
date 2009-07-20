@@ -1,12 +1,12 @@
 % Licensed under the Apache License, Version 2.0 (the "License"); you may not
-% use this file except in compliance with the License.  You may obtain a copy of
+% use this file except in compliance with the License. You may obtain a copy of
 % the License at
 %
 %   http://www.apache.org/licenses/LICENSE-2.0
 %
 % Unless required by applicable law or agreed to in writing, software
 % distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 % License for the specific language governing permissions and limitations under
 % the License.
 
@@ -17,7 +17,7 @@
 -export([new_uuid/0, rand32/0, implode/2, collate/2, collate/3]).
 -export([abs_pathname/1,abs_pathname/2, trim/1, ascii_lower/1]).
 -export([encodeBase64/1, decodeBase64/1, to_hex/1,parse_term/1,dict_find/3]).
--export([file_read_size/1]).
+-export([file_read_size/1, get_nested_json_value/2, json_user_ctx/1]).
 -export([to_binary/1, to_list/1]).
 
 -include("couch_db.hrl").
@@ -74,6 +74,22 @@ parse_term(List) ->
     {ok, Tokens, _} = erl_scan:string(List ++ "."),
     erl_parse:parse_term(Tokens).
 
+
+get_nested_json_value({Props}, [Key|Keys]) ->
+    case proplists:get_value(Key, Props, nil) of
+    nil -> throw({not_found, <<"missing json key: ", Key/binary>>});
+    Value -> get_nested_json_value(Value, Keys)
+    end;
+get_nested_json_value(Value, []) ->
+    Value;
+get_nested_json_value(_NotJSONObj, _) ->
+    throw({not_found, json_mismatch}).
+
+json_user_ctx(#db{name=DbName, user_ctx=Ctx}) ->
+    {[{<<"db">>, DbName},
+            {<<"name">>,Ctx#user_ctx.name},
+            {<<"roles">>,Ctx#user_ctx.roles}]}.
+    
 
 % returns a random integer
 rand32() ->
@@ -226,8 +242,8 @@ should_flush(MemThreshHold) ->
 %% Take 3 bytes a time (3 x 8 = 24 bits), and make 4 characters out of
 %% them (4 x 6 = 24 bits).
 %%
-encodeBase64(Bs) when list(Bs) ->
-    encodeBase64(list_to_binary(Bs), <<>>);
+encodeBase64(Bs) when is_list(Bs) ->
+    encodeBase64(iolist_to_binary(Bs), <<>>);
 encodeBase64(Bs) ->
     encodeBase64(Bs, <<>>).
 

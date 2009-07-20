@@ -1,12 +1,12 @@
 % Licensed under the Apache License, Version 2.0 (the "License"); you may not
-% use this file except in compliance with the License.  You may obtain a copy of
+% use this file except in compliance with the License. You may obtain a copy of
 % the License at
 %
 %   http://www.apache.org/licenses/LICENSE-2.0
 %
 % Unless required by applicable law or agreed to in writing, software
 % distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 % License for the specific language governing permissions and limitations under
 % the License.
 
@@ -278,13 +278,20 @@ count_leafs_simple([{_Key, _Value, SubTree} | RestTree]) ->
 map(_Fun, []) ->
     [];
 map(Fun, [{Pos, Tree}|Rest]) ->
-    [NewTree] = map_simple(Fun, Pos, [Tree]),
-    [{Pos, NewTree} | map(Fun, Rest)].
+    case erlang:fun_info(Fun, arity) of
+    {arity, 2} ->
+        [NewTree] = map_simple(fun(A,B,_C) -> Fun(A,B) end, Pos, [Tree]),
+        [{Pos, NewTree} | map(Fun, Rest)];
+    {arity, 3} ->
+        [NewTree] = map_simple(Fun, Pos, [Tree]),
+        [{Pos, NewTree} | map(Fun, Rest)]
+    end.
 
 map_simple(_Fun, _Pos, []) ->
     [];
 map_simple(Fun, Pos, [{Key, Value, SubTree} | RestTree]) ->
-    Value2 = Fun({Pos, Key}, Value),
+    Value2 = Fun({Pos, Key}, Value, 
+            if SubTree == [] -> leaf; true -> branch end),
     [{Key, Value2, map_simple(Fun, Pos + 1, SubTree)} | map_simple(Fun, Pos, RestTree)].
 
 

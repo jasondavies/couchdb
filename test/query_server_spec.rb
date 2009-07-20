@@ -1,15 +1,14 @@
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
-# use this file except in compliance with the License.  You may obtain a copy
-# of the License at
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
 #
 #   http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-
 
 # to run (requires ruby and rspec):
 # spec test/query_server_spec.rb -f specdoc --color
@@ -17,11 +16,9 @@
 COUCH_ROOT = "#{File.dirname(__FILE__)}/.." unless defined?(COUCH_ROOT)
 LANGUAGE = "js"
 
-
 require 'open3'
 require 'spec'
 require 'json'
-
 
 class OSProcessRunner
   def self.run
@@ -242,6 +239,15 @@ functions = {
           return "tail";
         };
     JS
+  },
+  "filter-basic" => {
+    "js" => <<-JS
+      function(doc, req, userCtx) {
+        if (doc.good) {
+          return true;
+        }
+      }
+    JS
   }
 }
 
@@ -421,6 +427,18 @@ describe "query server normal case" do
       # here's where js has to discard quit properly
       @qs.run(["reset"]).
         should == true
+    end
+  end
+  
+  describe "changes filter" do
+    before(:all) do
+      @fun = functions["filter-basic"][LANGUAGE]
+      @qs.reset!
+      @qs.add_fun(@fun).should == true
+    end
+    it "should only return true for good docs" do
+      @qs.run(["filter", [{"key"=>"bam", "good" => true}, {"foo" => "bar"}, {"good" => true}]]).
+        should ==  [true, [true, false, true]]
     end
   end
 end

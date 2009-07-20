@@ -1,15 +1,14 @@
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
-// use this file except in compliance with the License.  You may obtain a copy
-// of the License at
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at
 //
 //   http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
-
 
 couchTests.changes = function(debug) {
   var db = new CouchDB("test_suite_db");
@@ -111,4 +110,66 @@ couchTests.changes = function(debug) {
     T(str.charAt(str.length - 1) == "\n")
     T(str.charAt(str.length - 2) == "\n")
   }
+  
+  // test the filtered changes
+  var ddoc = {
+    _id : "_design/changes_filter",
+    "filters" : {
+      "bop" : "function(doc, req, userCtx) { return (doc.bop);}",
+      "dynamic" : stringFun(function(doc, req, userCtx) { 
+        var field = req.query.field;
+        return doc[field];
+      }),
+      "userCtx" : stringFun(function(doc, req, userCtx) {
+        return doc.user && (doc.user == userCtx.name);
+      })
+    }
+  }
+
+  db.save(ddoc);
+
+  var req = CouchDB.request("GET", "/test_suite_db/_changes?filter=changes_filter/bop");
+  var resp = JSON.parse(req.responseText);
+  T(resp.results.length == 0); 
+
+  db.save({"bop" : "foom"});
+  
+  var req = CouchDB.request("GET", "/test_suite_db/_changes?filter=changes_filter/bop");
+  var resp = JSON.parse(req.responseText);
+  T(resp.results.length == 1);
+    
+  req = CouchDB.request("GET", "/test_suite_db/_changes?filter=changes_filter/dynamic&field=woox");
+  resp = JSON.parse(req.responseText);
+  T(resp.results.length == 0);
+  
+  req = CouchDB.request("GET", "/test_suite_db/_changes?filter=changes_filter/dynamic&field=bop");
+  resp = JSON.parse(req.responseText);
+  T(resp.results.length == 1);
+  
+  // test for userCtx
+  run_on_modified_server(
+    [{section: "httpd",
+      key: "authentication_handler",
+      value: "{couch_httpd, special_test_authentication_handler}"},
+     {section:"httpd",
+      key: "WWW-Authenticate",
+      value:  "X-Couch-Test-Auth"}],
+
+    function() {
+      var authOpts = {"headers":{"WWW-Authenticate": "X-Couch-Test-Auth Chris Anderson:mp3"}};
+      
+      T(db.save({"user" : "Noah Slater"}).ok);
+      var req = CouchDB.request("GET", "/test_suite_db/_changes?filter=changes_filter/userCtx", authOpts);
+      var resp = JSON.parse(req.responseText);
+      T(resp.results.length == 0);
+
+      var docResp = db.save({"user" : "Chris Anderson"});
+      T(docResp.ok);
+      req = CouchDB.request("GET", "/test_suite_db/_changes?filter=changes_filter/userCtx", authOpts);
+      resp = JSON.parse(req.responseText);
+      T(resp.results.length == 1);
+      T(resp.results[0].id == docResp.id);
+    });
+  
+  // todo implement adhoc filters...
 };

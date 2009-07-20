@@ -1,12 +1,12 @@
 % Licensed under the Apache License, Version 2.0 (the "License"); you may not
-% use this file except in compliance with the License.  You may obtain a copy of
+% use this file except in compliance with the License. You may obtain a copy of
 % the License at
 %
 %   http://www.apache.org/licenses/LICENSE-2.0
 %
 % Unless required by applicable law or agreed to in writing, software
 % distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 % License for the specific language governing permissions and limitations under
 % the License.
 
@@ -78,7 +78,7 @@ delete(Section, Key) ->
 delete(Section, Key, Persist) when is_binary(Section) and is_binary(Key) ->
     delete(?b2l(Section), ?b2l(Key), Persist);
 delete(Section, Key, Persist) ->
-    ?MODULE:set(Section, Key, "", Persist).
+    gen_server:call(?MODULE, {delete, Section, Key, Persist}).
 
 
 register(Fun) ->
@@ -129,6 +129,18 @@ handle_call({set, Sec, Key, Val, Persist}, _From, Config) ->
             ok
     end,
     [catch F(Sec, Key, Val) || {_Pid, F} <- Config#config.notify_funs],
+    {reply, ok, Config};
+handle_call({delete, Sec, Key, Persist}, _From, Config) ->
+    true = ets:delete(?MODULE, {Sec,Key}),
+    case {Persist, Config#config.write_filename} of
+        {true, undefined} ->
+            ok;
+        {true, FileName} ->
+            couch_config_writer:save_to_file({{Sec, Key}, ""}, FileName);
+        _ ->
+            ok
+    end,
+    [catch F(Sec, Key, deleted) || {_Pid, F} <- Config#config.notify_funs],
     {reply, ok, Config};
 handle_call({register, Fun, Pid}, _From, #config{notify_funs=PidFuns}=Config) ->
     erlang:monitor(process, Pid),
@@ -194,10 +206,15 @@ parse_ini_file(IniFile) ->
                 {ok, [ValueName|LineValues]} -> % yeehaw, got a line!
                     RemainingLine = couch_util:implode(LineValues, "="),
                     % removes comments
-                    {ok, [LineValue | _Rest]} =
-                        regexp:split(RemainingLine, " ;|\t;"),
-                    {AccSectionName,
-                [{{AccSectionName, ValueName}, LineValue} | AccValues]}
+                    case regexp:split(RemainingLine, " ;|\t;") of
+                    {ok, [[]]} ->
+                        % empty line means delete this key
+                        ets:delete(?MODULE, {AccSectionName, ValueName}),
+                        {AccSectionName, AccValues};                        
+                    {ok, [LineValue | _Rest]} ->
+                        {AccSectionName,
+                            [{{AccSectionName, ValueName}, LineValue} | AccValues]}
+                    end
                 end
             end
         end, {"", []}, Lines),
