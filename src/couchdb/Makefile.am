@@ -68,7 +68,6 @@ source_files = \
     couch_httpd_view.erl \
     couch_httpd_misc_handlers.erl \
     couch_httpd_stats_handlers.erl \
-    couch_httpd_rewrite.erl \
     couch_key_tree.erl \
     couch_log.erl \
     couch_os_process.erl \
@@ -88,8 +87,7 @@ source_files = \
     couch_view_compactor.erl \
     couch_view_updater.erl \
     couch_view_group.erl \
-    couch_db_updater.erl \
-    webmachine_dispatcher.erl
+    couch_db_updater.erl
 
 EXTRA_DIST = $(source_files) couch_db.hrl couch_stats.hrl
 
@@ -117,7 +115,6 @@ compiled_files = \
     couch_httpd_view.beam \
     couch_httpd_misc_handlers.beam \
     couch_httpd_stats_handlers.beam \
-    couch_httpd_rewrite.beam \
     couch_key_tree.beam \
     couch_log.beam \
     couch_os_process.beam \
@@ -137,8 +134,7 @@ compiled_files = \
     couch_view_compactor.beam \
     couch_view_updater.beam \
     couch_view_group.beam \
-    couch_db_updater.beam \
-    webmachine_dispatcher.beam
+    couch_db_updater.beam
 
 # doc_base = \
 #     erlang.png \
