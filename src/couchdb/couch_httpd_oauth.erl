@@ -65,7 +65,7 @@ handle_oauth_req(#httpd{path_parts=[_OAuth, <<"access_token">>]}=Req) ->
     {ok, serve_oauth_access_token(Req)}.
 
 serve_oauth_request_token(#httpd{method=Method}=Req) ->
-    case Method of
+    Resp = case Method of
         'GET' ->
             serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
                 AccessToken = proplists:get_value("oauth_token", Params),
@@ -90,6 +90,10 @@ serve_oauth_request_token(#httpd{method=Method}=Req) ->
             end);
         _ ->
             method_not_allowed(Req)
+    end,
+    case Resp of
+        undefined -> bad(Req, "Invalid consumer.");
+        Resp2 -> Resp2
     end.
 
 % This needs to be protected i.e. force user to login using HTTP Basic Auth or form-based login.
@@ -129,7 +133,7 @@ serve_oauth_authorize(#httpd{method=Method}=Req) ->
     end.
 
 serve_oauth_access_token(#httpd{method=Method}=Req) ->
-    case Method of
+    Resp = case Method of
         'GET' ->
             serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
                 case oauth:token(Params) of
@@ -146,6 +150,10 @@ serve_oauth_access_token(#httpd{method=Method}=Req) ->
             end);
         _ ->
             method_not_allowed(Req)
+    end,
+    case Resp of
+        undefined -> bad(Req, "Invalid consumer.");
+        Resp2 -> Resp2
     end.
 
 serve_oauth(#httpd{mochi_req=MochiReq, req_body=ReqBody, method=Method}=Req, Fun) ->
