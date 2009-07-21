@@ -94,12 +94,12 @@ serve_oauth_request_token(#httpd{method=Method}=Req) ->
 
 % This needs to be protected i.e. force user to login using HTTP Basic Auth or form-based login.
 serve_oauth_authorize(#httpd{method=Method}=Req) ->
-    case Method of
+    Resp = case Method of
         'GET' ->
             % Confirm with the User that they want to authenticate the Consumer
             serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
                 AccessToken = proplists:get_value("oauth_token", Params),
-                TokenSecret = couch_config:get("oauth_token_secrets", AccessToken),
+                TokenSecret = couch_config:get("oauth_token_secrets", AccessToken, ""),
                 case oauth:verify(Signature, "GET", URL, Params, Consumer, TokenSecret) of
                     true ->
                         ok(Req, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
@@ -122,6 +122,10 @@ serve_oauth_authorize(#httpd{method=Method}=Req) ->
             end);
         _ ->
             method_not_allowed(Req)
+    end,
+    case Resp of
+        undefined -> bad(Req, "Invalid consumer.");
+        Resp2 -> Resp2
     end.
 
 serve_oauth_access_token(#httpd{method=Method}=Req) ->

@@ -120,8 +120,9 @@ couchTests.oauth = function(debug) {
         responseMessage = OAuth.decodeForm(xhr.responseText);
 
         // Obtaining User Authorization
-        xhr = CouchDB.request("GET", authorization_url + '?oauth_token=' + responseMessage.oauth_token);
-        T(xhr.status == 200);
+        //Only needed for 3-legged OAuth
+        //xhr = CouchDB.request("GET", authorization_url + '?oauth_token=' + responseMessage.oauth_token);
+        //T(xhr.status == 200);
 
         xhr = oauthRequest("http://" + host + "/_session", message, accessor);
         T(xhr.status == 200);
