@@ -15,30 +15,23 @@
 
 -export([oauth_authentication_handler/1, handle_oauth_req/1, consumer_lookup/2]).
 
--import(couch_httpd, [header_value/2, send_json/4, send_method_not_allowed/2]).
+-import(couch_httpd, [header_value/2, send_error/4, send_json/4,
+        send_method_not_allowed/2]).
 -import(erlang, [integer_to_list/2, list_to_integer/2]).
 -import(proplists, [get_value/2, get_value/3]).
 
 % OAuth auth handler using per-node user db
-oauth_authentication_handler(#httpd{mochi_req=MochiReq, method=Method, req_body=ReqBody}=Req) ->
-    Req2 = Req, %case ReqBody of
-        %undefined -> Req#httpd{req_body=MochiReq:recv_body()};
-        %_Else -> Req
-    %end,
-    case serve_oauth(Req2, fun(URL, Params, Consumer, Signature) ->
+oauth_authentication_handler(#httpd{method=Method}=Req) ->
+    serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
         AccessToken = proplists:get_value("oauth_token", Params),
         TokenSecret = couch_config:get("oauth_token_secrets", AccessToken),
         case oauth:verify(Signature, atom_to_list(Method), URL, Params, Consumer, TokenSecret) of
             true ->
-                set_user_ctx(Req2, AccessToken);
+                set_user_ctx(Req, AccessToken);
             false ->
-                Req2
+                Req
         end
-    end) of
-        undefined -> Req2;
-        #httpd{}=Req3 -> Req3;
-        Resp -> {ok, Resp}
-    end.
+    end, true).
 
 % Look up the consumer key and get the roles to give the consumer
 set_user_ctx(Req, AccessToken) ->
@@ -57,60 +50,55 @@ set_user_ctx(Req, AccessToken) ->
             Req
     end.
 
-handle_oauth_req(#httpd{path_parts=[_OAuth, <<"request_token">>]}=Req) ->
-    {ok, serve_oauth_request_token(Req)};
+% OAuth request_token
+handle_oauth_req(#httpd{path_parts=[_OAuth, <<"request_token">>], method=Method}=Req) ->
+    serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
+        AccessToken = proplists:get_value("oauth_token", Params),
+        TokenSecret = couch_config:get("oauth_token_secrets", AccessToken),
+        case oauth:verify(Signature, atom_to_list(Method), URL, Params, Consumer, TokenSecret) of
+            true ->
+                ok(Req, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
+            false ->
+                invalid_signature(Req)
+        end
+    end, false);
 handle_oauth_req(#httpd{path_parts=[_OAuth, <<"authorize">>]}=Req) ->
     {ok, serve_oauth_authorize(Req)};
+handle_oauth_req(#httpd{path_parts=[_OAuth, <<"access_token">>], method='GET'}=Req) ->
+    serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
+        case oauth:token(Params) of
+            "requestkey" ->
+                case oauth:verify(Signature, "GET", URL, Params, Consumer, "requestsecret") of
+                    true ->
+                        ok(Req, <<"oauth_token=accesskey&oauth_token_secret=accesssecret">>);
+                    false ->
+                        invalid_signature(Req)
+                end;
+            _ ->
+                send_error(Req, 400, <<"invalid_token">>, <<"Invalid OAuth token.">>)
+        end
+    end, false);
 handle_oauth_req(#httpd{path_parts=[_OAuth, <<"access_token">>]}=Req) ->
-    {ok, serve_oauth_access_token(Req)}.
+    send_method_not_allowed(Req, "GET").
 
-serve_oauth_request_token(#httpd{method=Method}=Req) ->
-    Resp = case Method of
-        'GET' ->
-            serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
-                AccessToken = proplists:get_value("oauth_token", Params),
-                TokenSecret = couch_config:get("oauth_token_secrets", AccessToken),
-                case oauth:verify(Signature, "GET", URL, Params, Consumer, TokenSecret) of
-                    true ->
-                        ok(Req, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
-                    false ->
-                        bad(Req, "Invalid signature value.")
-                end
-            end);
-        'POST' ->
-            serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
-                AccessToken = proplists:get_value("oauth_token", Params),
-                TokenSecret = couch_config:get("oauth_token_secrets", AccessToken),
-                case oauth:verify(Signature, "POST", URL, Params, Consumer, TokenSecret) of
-                    true ->
-                        ok(Req, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
-                    false ->
-                        bad(Req, "Invalid signature value.")
-                end
-            end);
-        _ ->
-            method_not_allowed(Req)
-    end,
-    case Resp of
-        undefined -> bad(Req, "Invalid consumer.");
-        Resp2 -> Resp2
-    end.
+invalid_signature(Req) ->
+    send_error(Req, 400, <<"invalid_signature">>, <<"Invalid signature value.">>).
 
 % This needs to be protected i.e. force user to login using HTTP Basic Auth or form-based login.
 serve_oauth_authorize(#httpd{method=Method}=Req) ->
-    Resp = case Method of
+    case Method of
         'GET' ->
             % Confirm with the User that they want to authenticate the Consumer
             serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
                 AccessToken = proplists:get_value("oauth_token", Params),
-                TokenSecret = couch_config:get("oauth_token_secrets", AccessToken, ""),
+                TokenSecret = couch_config:get("oauth_token_secrets", AccessToken),
                 case oauth:verify(Signature, "GET", URL, Params, Consumer, TokenSecret) of
                     true ->
                         ok(Req, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
                     false ->
-                        bad(Req, "Invalid signature value.")
+                        invalid_signature(Req)
                 end
-            end);
+            end, false);
         'POST' ->
             % If the User has confirmed, we direct the User back to the Consumer with a verification code
             serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
@@ -121,42 +109,14 @@ serve_oauth_authorize(#httpd{method=Method}=Req) ->
                         %redirect(oauth_callback, oauth_token, oauth_verifier),
                         ok(Req, <<"oauth_token=requestkey&oauth_token_secret=requestsecret">>);
                     false ->
-                        bad(Req, "Invalid signature value.")
+                        invalid_signature(Req)
                 end
-            end);
+            end, false);
         _ ->
-            method_not_allowed(Req)
-    end,
-    case Resp of
-        undefined -> bad(Req, "Invalid consumer.");
-        Resp2 -> Resp2
+            send_method_not_allowed(Req, "GET,POST")
     end.
 
-serve_oauth_access_token(#httpd{method=Method}=Req) ->
-    Resp = case Method of
-        'GET' ->
-            serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
-                case oauth:token(Params) of
-                    "requestkey" ->
-                        case oauth:verify(Signature, "GET", URL, Params, Consumer, "requestsecret") of
-                            true ->
-                                ok(Req, <<"oauth_token=accesskey&oauth_token_secret=accesssecret">>);
-                            false ->
-                                bad(Req, "Invalid signature value.")
-                        end;
-                    _ ->
-                        bad(Req, "Invalid OAuth token.")
-                end
-            end);
-        _ ->
-            method_not_allowed(Req)
-    end,
-    case Resp of
-        undefined -> bad(Req, "Invalid consumer.");
-        Resp2 -> Resp2
-    end.
-
-serve_oauth(#httpd{mochi_req=MochiReq, req_body=ReqBody, method=Method}=Req, Fun) ->
+serve_oauth(#httpd{mochi_req=MochiReq, req_body=ReqBody, method=Method}=Req, Fun, FailSilently) ->
     % 1. In the HTTP Authorization header as defined in OAuth HTTP Authorization Scheme.
     % 2. As the HTTP POST request body with a content-type of application/x-www-form-urlencoded.
     % 3. Added to the URLs in the query part (as defined by [RFC3986] section 3).
@@ -192,12 +152,16 @@ serve_oauth(#httpd{mochi_req=MochiReq, req_body=ReqBody, method=Method}=Req, Fun
     case get_value("oauth_version", Params, "1.0") of
         "1.0" ->
             case get_value("oauth_consumer_key", Params, undefined) of
-                undefined -> undefined;
+                undefined ->
+                    case FailSilently of
+                        true -> Req;
+                        false -> send_error(Req, 400, <<"invalid_consumer">>, <<"Invalid consumer.">>)
+                    end;
                 ConsumerKey ->
                     SigMethod = get_value("oauth_signature_method", Params),
                     case consumer_lookup(ConsumerKey, SigMethod) of
                         none ->
-                            bad(Req, "Invalid consumer (key or signature method).");
+                            send_error(Req, 400, <<"invalid_consumer">>, <<"Invalid consumer (key or signature method).">>);
                         Consumer ->
                             Signature = proplists:get_value("oauth_signature", Params),
                             URL = couch_httpd:absolute_uri(Req, MochiReq:get(path)),
@@ -205,7 +169,7 @@ serve_oauth(#httpd{mochi_req=MochiReq, req_body=ReqBody, method=Method}=Req, Fun
                     end
             end;
         _ ->
-            bad(Req, "Invalid OAuth version.")
+            send_error(Req, 400, <<"invalid_oauth_version">>, <<"Invalid OAuth version.">>)
     end.
 
 consumer_lookup(Key, MethodStr) ->
@@ -225,10 +189,4 @@ consumer_lookup(Key, MethodStr) ->
     end.
 
 ok(#httpd{mochi_req=MochiReq}, Body) ->
-    MochiReq:respond({200, [], Body}).
-
-bad(#httpd{mochi_req=MochiReq}, Reason) ->
-    MochiReq:respond({400, [], list_to_binary("Bad Request: " ++ Reason)}).
-
-method_not_allowed(#httpd{mochi_req=MochiReq}) ->
-    MochiReq:respond({405, [], <<>>}).
+    {ok, MochiReq:respond({200, [], Body})}.

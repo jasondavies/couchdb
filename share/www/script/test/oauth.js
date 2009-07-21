@@ -91,48 +91,54 @@ couchTests.oauth = function(debug) {
       };
 
       var signatureMethods = ["PLAINTEXT", "HMAC-SHA1"];
+      var consumerKeys = {key: 200, nonexistent_key: 400};
 
       for (var i=0; i<signatureMethods.length; i++) {
-        var message = {
-          parameters: {
-            realm: "",
-            oauth_signature_method: signatureMethods[i],
-            oauth_consumer_key: "key",
-            oauth_token: "foo",
-            oauth_token_secret: "bar",
-            oauth_version: "1.0"
+        for (var consumerKey in consumerKeys) {
+          var expectedCode = consumerKeys[consumerKey];
+          var message = {
+            parameters: {
+              realm: "",
+              oauth_signature_method: signatureMethods[i],
+              oauth_consumer_key: consumerKey,
+              oauth_token: "foo",
+              oauth_token_secret: "bar",
+              oauth_version: "1.0"
+            }
+          };
+
+          // Get request token via Authorization header
+          xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor);
+          T(xhr.status == expectedCode);
+
+          // POST request token
+          //De-activated this for now as we don't need to support POSTing OAuth at least for now
+          //xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor, "POST");
+          //T(xhr.status == 200);
+
+          // GET request token
+          xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor, "GET");
+          T(xhr.status == expectedCode);
+
+          responseMessage = OAuth.decodeForm(xhr.responseText);
+
+          // Obtaining User Authorization
+          //Only needed for 3-legged OAuth
+          //xhr = CouchDB.request("GET", authorization_url + '?oauth_token=' + responseMessage.oauth_token);
+          //T(xhr.status == expectedCode);
+
+          xhr = oauthRequest("http://" + host + "/_session", message, accessor);
+          T(xhr.status == expectedCode);
+          if (xhr.status == expectedCode == 200) {
+            data = JSON.parse(xhr.responseText);
+            T(data.name == "jason");
+            T(data.roles[0] == "test");
           }
-        };
 
-        // Get request token via Authorization header
-        xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor);
-        T(xhr.status == 200);
-
-        // POST request token
-        //De-activated this for now as we don't need to support POSTing OAuth at least for now
-        //xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor, "POST");
-        //T(xhr.status == 200);
-
-        // GET request token
-        xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor, "GET");
-        T(xhr.status == 200);
-
-        responseMessage = OAuth.decodeForm(xhr.responseText);
-
-        // Obtaining User Authorization
-        //Only needed for 3-legged OAuth
-        //xhr = CouchDB.request("GET", authorization_url + '?oauth_token=' + responseMessage.oauth_token);
-        //T(xhr.status == 200);
-
-        xhr = oauthRequest("http://" + host + "/_session", message, accessor);
-        T(xhr.status == 200);
-        data = JSON.parse(xhr.responseText);
-        T(data.name == "jason");
-        T(data.roles[0] == "test");
-
-        // Replication
-        var result = CouchDB.replicate(dbPair.source, dbPair.target);
-        T(result.ok);
+          // Replication
+          var result = CouchDB.replicate(dbPair.source, dbPair.target);
+          T(result.ok);
+        }
       }
 
     } finally {
