@@ -65,9 +65,9 @@
       recentDbs.sort();
       $.each(recentDbs, function(idx, name) {
         if (name) {
-          $("#dbs").append("<li><a href='database.html?" +
-            encodeURIComponent(name) + "'>" + name +
+          $("#dbs").append("<li>" +
             "<button class='remove' title='Remove from list' value='" + name + "'></button>" +
+            "<a href='database.html?" + encodeURIComponent(name) + "' title='" + name + "'>" + name +
             "</a></li>");
         }
       });
@@ -106,6 +106,33 @@
   $.extend($.futon, {
     navigation: new Navigation()
   });
+
+  $.fn.addPlaceholder = function(text) {
+    return this.each(function() {
+      var input = $(this);
+      if ($.browser.safari) {
+        input.attr("placeholder", text);
+        return;
+      }
+      input.blur(function() {
+        if ($.trim(input.val()) == "") {
+          input.addClass("placeholder").val(text);
+        } else {
+          input.removeClass("placeholder");
+        }
+      }).triggerHandler("blur")
+      input.focus(function() {
+        if (input.is(".placeholder")) {
+          input.val("").removeClass("placeholder");
+        }
+      });
+      $(this.form).submit(function() {
+        if (input.is(".placeholder")) {
+          input.val("");
+        }
+      });
+    });
+  }
 
   $(document)
     .ajaxStart(function() { $(this.body).addClass("loading"); })

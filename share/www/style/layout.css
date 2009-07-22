@@ -58,6 +58,7 @@ button[disabled] { color: #999; }
 input, select, textarea { background: #fff; border: 1px solid;
   border-color: #999 #ddd #ddd #999; margin: 0; padding: 1px;
 }
+input.placeholder { color: #999; }
 textarea { font-family: "DejaVu Sans Mono",Monaco,monospace; font-size: 100%; }
 fieldset { border: none; font-size: 95%; margin: 0; padding: .2em 0 0; }
 fieldset legend { color: #666; font-weight: bold; padding: 0; }
@@ -160,8 +161,8 @@ ul.suggest-dropdown li.selected { cursor: pointer; background: Highlight;
 #logo { padding: 20px 18px; }
 
 #nav { color: #333; font-size: 110%; font-weight: bold; list-style: none;
-  margin: 0; overflow: auto; padding: 0; position: absolute; top: 185px;
-  bottom: 20px; right: 0; width: 210px;
+  margin: 0; overflow: auto; overflow-x: hidden; padding: 0;
+  position: absolute; top: 185px; bottom: 20px; right: 0; width: 210px;
 }
 #nav ul { list-style: none; margin: 0; padding: 0; }
 #nav li { color: #999; margin: 5px 0 0; padding: 3px 0; }
@@ -173,7 +174,7 @@ ul.suggest-dropdown li.selected { cursor: pointer; background: Highlight;
 #nav li li:hover { background: #e4e4e4; }
 #nav li.selected li:hover { background: #d7d7d7; }
 #nav li li :link, #nav li li :visited { color: #333; display: block;
-  text-decoration: none;
+  overflow: hidden; text-decoration: none; text-overflow: ellipsis;
 }
 #nav li li :link:hover, #nav li li :visited:hover { color: #000; }
 #nav li li :link:focus, #nav li li :visited:focus { outline: none; }
@@ -185,8 +186,8 @@ ul.suggest-dropdown li.selected { cursor: pointer; background: Highlight;
   color: #fff;
 }
 #nav li button { background: transparent 0 0 no-repeat; border: none;
-  cursor: pointer; width: 15px; height: 15px; margin-left: .5em;
-  vertical-align: top;
+  cursor: pointer; width: 15px; height: 15px; margin-left: -20px;
+  position: absolute; vertical-align: top;
 }
 #nav li li:hover button.remove {
   background-image: url(../image/delete-mini.png);
@@ -298,9 +299,11 @@ ul.suggest-dropdown li.selected { cursor: pointer; background: Highlight;
   padding: 0 .5em 2px;
 }
 #viewcode .top { border-bottom: 1px solid #ddd; color: #aaa; font-size: 95%; }
-#viewcode .top span { background: url(../image/twisty.gif) 0 -96px no-repeat;
-  border: none; color: #666; cursor: pointer; display: block; font-size: 90%;
-  margin: 0; padding: 2px 0 0 15px;
+#viewcode .top span { border: none; color: #666; cursor: pointer;
+  display: block; font-size: 90%; margin: 0; padding: 2px 0 0;
+}
+#viewcode .top span#view-toggle {
+  background: url(../image/twisty.gif) 0 -96px no-repeat; padding-left: 15px;
 }
 #viewcode .top a { float: right; font-size: 90%; line-height: 1.4em;
   padding: 2px 2px 0 0;

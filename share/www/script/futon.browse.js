@@ -97,7 +97,6 @@
       var dbName = decodeURIComponent(urlParts.shift());
       var viewName = (urlParts.length > 0) ? urlParts.join("/") : null;
       if (viewName) {
-        viewName = decodeURIComponent(viewName);
         $.cookies.set(dbName + ".view", viewName);
       } else {
         viewName = $.cookies.get(dbName + ".view", "");
@@ -132,7 +131,7 @@
               },
               success: function(resp) {
                 location.href = "document.html?" + encodeURIComponent(dbName) +
-                                "/" + encodeDocId(resp.id);
+                                "/" + $.couch.encodeDocId(resp.id);
               }
             });
           }
@@ -206,7 +205,7 @@
             $.cookies.get(db.name + ".map", templates[page.viewLanguage]),
             $.cookies.get(db.name + ".reduce", "")
           );
-        $("#grouptruenotice").show();
+          $("#grouptruenotice").show();
         }
         page.populateLanguagesMenu();
         if (this.isTempView) {
@@ -257,11 +256,11 @@
                   var optGroup = $(document.createElement("optgroup"))
                     .attr("label", doc._id.substr(8)).appendTo(select);
                   for (var name in doc.views) {
+                    var path = $.couch.encodeDocId(doc._id) + "/_view/" +
+                      encodeURIComponent(name);
                     var option = $(document.createElement("option"))
-                      .attr("value", encodeURIComponent(doc._id) + "/_view/" +
-                        encodeURIComponent(name)).text(name)
-                      .appendTo(optGroup);
-                    if (doc._id + "/_view/" + name == viewName) {
+                      .attr("value", path).text(name).appendTo(optGroup);
+                    if (path == viewName) {
                       option[0].selected = true;
                     }
                   }
@@ -282,9 +281,9 @@
       this.revertViewChanges = function(callback) {
         if (!page.storedViewCode) {
           var viewNameParts = viewName.split("/");
-          var designDocId = viewNameParts[1];
-          var localViewName = viewNameParts[3];
-          db.openDoc(["_design", designDocId].join("/"), {
+          var designDocId = decodeURIComponent(viewNameParts[1]);
+          var localViewName = decodeURIComponent(viewNameParts[3]);
+          db.openDoc("_design/" + designDocId, {
             error: function(status, error, reason) {
               if (status == 404) {
                 $.cookies.remove(dbName + ".view");
@@ -331,8 +330,8 @@
       this.saveViewAs = function() {
         if (viewName && /^_design/.test(viewName)) {
           var viewNameParts = viewName.split("/");
-          var designDocId = viewNameParts[1];
-          var localViewName = viewNameParts[3];
+          var designDocId = decodeURIComponent(viewNameParts[1]);
+          var localViewName = decodeURIComponent(viewNameParts[3]);
         } else {
           var designDocId = "", localViewName = "";
         }
@@ -406,7 +405,7 @@
                     callback();
                     page.isDirty = false;
                     location.href = "database.html?" + encodeURIComponent(dbName) +
-                      "/" + encodeDocId(doc._id) +
+                      "/" + $.couch.encodeDocId(doc._id) +
                       "/_view/" + encodeURIComponent(data.name);
                   }
                 });
@@ -427,9 +426,9 @@
 
       this.saveViewChanges = function() {
         var viewNameParts = viewName.split("/");
-        var designDocId = viewNameParts[1];
-        var localViewName = viewNameParts[3];
-        db.openDoc(["_design", designDocId].join("/"), {
+        var designDocId = decodeURIComponent(viewNameParts[1]);
+        var localViewName = decodeURIComponent(viewNameParts[3]);
+        db.openDoc("_design/" + designDocId, {
           success: function(doc) {
             var numViews = 0;
             for (var viewName in (doc.views || {})) {
@@ -458,18 +457,18 @@
 
       this.updateDesignDocLink = function() {
         if (viewName && /^_design/.test(viewName)) {
-          var docId = "_design/" + viewName.split("/")[1];
+          var docId = "_design/" + decodeURIComponent(viewName.split("/")[1]);
           $("#designdoc-link").attr("href", "document.html?" +
-            encodeURIComponent(dbName) + "/" + encodeDocId(docId)).text(docId);
+            encodeURIComponent(dbName) + "/" + $.couch.encodeDocId(docId)).text(docId);
         } else {
           $("#designdoc-link").removeAttr("href").text("");
         }
       }
 
-      this.jumpToDocument = function(e) {
-        if (e.which == 13) {
-          var docid = $('#jumpto input').val();
-          location.href = 'document.html?' + encodeURIComponent(db.name) + '/' + encodeDocId(docid);
+      this.jumpToDocument = function(docId) {
+        if (docId != "") {
+          location.href = 'document.html?' + encodeURIComponent(db.name)
+            + "/" + $.couch.encodeDocId(docId);
         }
       }
 
@@ -559,7 +558,7 @@
             }
             if (row.id) {
               $("<td class='key'><a href='document.html?" + encodeURIComponent(db.name) +
-                "/" + encodeDocId(row.id) + "'><strong></strong><br>" +
+                "/" + $.couch.encodeDocId(row.id) + "'><strong></strong><br>" +
                 "<span class='docid'>ID:&nbsp;" + row.id + "</span></a></td>")
                 .find("strong").text(key).end()
                 .appendTo(tr);
@@ -738,12 +737,12 @@
             if (currentIndex < revs.length - 1) {
               var prevRev = revs[currentIndex + 1].rev;
               $("#paging a.prev").attr("href", "?" + encodeURIComponent(dbName) +
-                "/" + encodeDocId(docId) + "@" + prevRev);
+                "/" + $.couch.encodeDocId(docId) + "@" + prevRev);
             }
             if (currentIndex > 0) {
               var nextRev = revs[currentIndex - 1].rev;
               $("#paging a.next").attr("href", "?" + encodeURIComponent(dbName) +
-                "/" + encodeDocId(docId) + "@" + nextRev);
+                "/" + $.couch.encodeDocId(docId) + "@" + nextRev);
             }
             $("#fields tbody.footer td span").text("Showing revision " +
               (revs.length - currentIndex) + " of " + revs.length);
@@ -755,7 +754,7 @@
 
         db.openDoc(docId, {revs_info: true,
           success: function(doc) {
-            var revs = doc._revs_info;
+            var revs = doc._revs_info || [];
             delete doc._revs_info;
             if (docRev != null) {
               db.openDoc(docId, {rev: docRev,
@@ -763,7 +762,7 @@
                   alert("The requested revision was not found. " +
                         "You will be redirected back to the latest revision.");
                   location.href = "?" + encodeURIComponent(dbName) +
-                    "/" + encodeDocId(docId);
+                    "/" + $.couch.encodeDocId(docId);
                 },
                 success: function(doc) {
                   handleResult(doc, revs);
@@ -797,7 +796,7 @@
           success: function(resp) {
             page.isDirty = false;
             location.href = "?" + encodeURIComponent(dbName) +
-              "/" + encodeDocId(docId);
+              "/" + $.couch.encodeDocId(docId);
           }
         });
       }
@@ -820,12 +819,12 @@
             var form = $("#upload-form");
             form.find("#progress").css("visibility", "visible");
             form.ajaxSubmit({
-              url: db.uri + encodeDocId(page.docId),
+              url: db.uri + $.couch.encodeDocId(page.docId),
               success: function(resp) {
                 form.find("#progress").css("visibility", "hidden");
                 page.isDirty = false;
                 location.href = "?" + encodeURIComponent(dbName) +
-                  "/" + encodeDocId(docId);
+                  "/" + $.couch.encodeDocId(docId);
               }
             });
           }
@@ -886,6 +885,15 @@
             if (keyCode == 9) { // tab, move to editing the value
               row.find("td").dblclick();
             }
+          },
+          validate: function(newName, oldName) {
+            $("div.error", this).remove();
+            if (newName != oldName && doc[newName] !== undefined) {
+              $("<div class='error'>Already have field with that name.</div>")
+                .appendTo(this);
+              return false;
+            }
+            return true;
           }
         });
       }
@@ -919,12 +927,13 @@
             return $.futon.formatJSON(doc[row.data("name")]);
           },
           validate: function(value) {
+            $("div.error", this).remove();
             try {
               JSON.parse(value);
               return true;
             } catch (err) {
               var msg = err.message;
-              if (msg == "parseJSON") {
+              if (msg == "parseJSON" || msg == "JSON.parse") {
                 msg = "Please enter a valid JSON value (for example, \"string\").";
               }
               $("<div class='error'></div>").text(msg).appendTo(this);
@@ -968,7 +977,7 @@
       }
 
       function _renderAttachmentItem(name, attachment) {
-        var attachmentHref = db.uri + encodeDocId(docId)
+        var attachmentHref = db.uri + $.couch.encodeDocId(docId)
           + "/" + encodeAttachment(name);
         var li = $("<li></li>");
         $("<a href='' title='Download file' target='_top'></a>").text(name)
@@ -1001,17 +1010,6 @@
     }
 
   });
-
-  function encodeDocId(docid) {
-    var encoded, parts = docid.split('/');
-    if (parts[0] == '_design') {
-      parts.shift();
-      encoded = encodeURIComponent(parts.join('/'));
-      return '_design/' + encoded;
-    } else {
-      return encodeURIComponent(docid);
-    }
-  };
 
   function encodeAttachment(name) {
     var encoded = [], parts = name.split('/');
