@@ -165,7 +165,9 @@ serve_oauth(#httpd{mochi_req=MochiReq, req_body=ReqBody, method=Method}=Req, Fun
                         Consumer ->
                             Signature = proplists:get_value("oauth_signature", Params),
                             URL = couch_httpd:absolute_uri(Req, MochiReq:get(path)),
-                            Fun(URL, proplists:delete("oauth_signature", Params), Consumer, Signature)
+                            Fun(URL, proplists:delete("oauth_signature",
+                                     proplists:delete("realm", Params)),
+                                Consumer, Signature)
                     end
             end;
         _ ->

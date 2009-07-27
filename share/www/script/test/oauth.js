@@ -98,7 +98,6 @@ couchTests.oauth = function(debug) {
           var expectedCode = consumerKeys[consumerKey];
           var message = {
             parameters: {
-              realm: "",
               oauth_signature_method: signatureMethods[i],
               oauth_consumer_key: consumerKey,
               oauth_token: "foo",
