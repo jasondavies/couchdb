@@ -185,6 +185,7 @@
                                      .bind("textInput", updateDirtyState);
             }
             $("#language").change(updateDirtyState);
+            page.updateDocumentListing();
           });
           $("#grouptruenotice").show();
         } else if (viewName == "_temp_view") {
@@ -194,6 +195,8 @@
             $.cookies.get(db.name + ".reduce", "")
           );
           $("#grouptruenotice").show();
+        } else {
+          page.updateDocumentListing();
         }
         page.populateLanguagesMenu();
         if (this.isTempView) {
@@ -236,24 +239,27 @@
       this.populateViewsMenu = function() {
         var select = $("#switch select");
         db.allDocs({startkey: "_design/", endkey: "_design0",
+          include_docs: true,
           success: function(resp) {
             select[0].options.length = 3;
             for (var i = 0; i < resp.rows.length; i++) {
-              db.openDoc(resp.rows[i].id, {
-                success: function(doc) {
-                  var optGroup = $(document.createElement("optgroup"))
-                    .attr("label", doc._id.substr(8)).appendTo(select);
-                  for (var name in doc.views) {
-                    var path = $.couch.encodeDocId(doc._id) + "/_view/" +
-                      encodeURIComponent(name);
-                    var option = $(document.createElement("option"))
-                      .attr("value", path).text(name).appendTo(optGroup);
-                    if (path == viewName) {
-                      option[0].selected = true;
-                    }
-                  }
+              var doc = resp.rows[i].doc;
+              var optGroup = $(document.createElement("optgroup"))
+                .attr("label", doc._id.substr(8)).appendTo(select);
+              var viewNames = [];
+              for (var name in doc.views) {
+                viewNames.push(name);
+              }
+              viewNames.sort();
+              for (var j = 0; j < viewNames.length; j++) {
+                var path = $.couch.encodeDocId(doc._id) + "/_view/" +
+                  encodeURIComponent(viewNames[j]);
+                var option = $(document.createElement("option"))
+                  .attr("value", path).text(viewNames[j]).appendTo(optGroup);
+                if (path == viewName) {
+                  option[0].selected = true;
                 }
-              });
+              }
             }
           }
         });
@@ -468,7 +474,7 @@
           // reduce views
           options.limit = per_page + 1;
         } else {
-          per_page = options.limit;
+          per_page = options.limit - 1;
         }
         if ($("#documents thead th.key").is(".desc")) {
           if (typeof options.descending == 'undefined') options.descending = true;
@@ -599,8 +605,8 @@
             $("#viewcode").show().removeClass("collapsed");
             var mapFun = $("#viewcode_map").val();
             $.cookies.set(db.name + ".map", mapFun);
-            var reduceFun = $("#viewcode_reduce").val() || null;
-            if (reduceFun != null) {
+            var reduceFun = $.trim($("#viewcode_reduce").val()) || null;
+            if (reduceFun) {
               $.cookies.set(db.name + ".reduce", reduceFun);
               options.group = true;
             } else {
@@ -615,7 +621,7 @@
           } else {
             $("#viewcode").show();
             var currentMapCode = $("#viewcode_map").val();
-            var currentReduceCode = $("#viewcode_reduce").val() || null;
+            var currentReduceCode = $.trim($("#viewcode_reduce").val()) || null;
             if (currentReduceCode) {
               options.group = true;
             }
