@@ -179,7 +179,8 @@ handle_request(MochiReq, DefaultFun,
                     (Fun, #httpd{}=Req) -> Fun(Req);
                     (Fun, Response) -> Response
                 end, HttpReq, AuthenticationFuns) of
-            #httpd{}=Req -> HandlerFun(Req);
+            #httpd{user_ctx=#user_ctx{}}=Req -> HandlerFun(Req);
+            #httpd{}=Req -> HandlerFun(Req#httpd{user_ctx=#user_ctx{}});
             Response -> Response
         end
     catch
