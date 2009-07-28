@@ -115,34 +115,29 @@ serve_oauth(#httpd{mochi_req=MochiReq, req_body=ReqBody, method=Method}=Req, Fun
     % 1. In the HTTP Authorization header as defined in OAuth HTTP Authorization Scheme.
     % 2. As the HTTP POST request body with a content-type of application/x-www-form-urlencoded.
     % 3. Added to the URLs in the query part (as defined by [RFC3986] section 3).
-    AuthorizationHeader = MochiReq:get_header_value("authorization"),
-    OAuthHeader = case AuthorizationHeader of
+    AuthHeader = case MochiReq:get_header_value("authorization") of
         undefined ->
-            undefined;
+            "";
         Else ->
             [Head | Tail] = re:split(Else, "\\s", [{parts, 2}, {return, list}]),
-            case string:to_lower(Head) of
-                "oauth" -> [Rest] = Tail, Rest;
-                _Else -> undefined
+            case [string:to_lower(Head) | Tail] of
+                ["oauth", Rest] -> Rest;
+                _Else -> ""
             end
     end,
-    Params = case OAuthHeader of 
-        undefined ->
-            case Method of
-                "POST" ->
-                    case MochiReq:get_primary_header_value("content-type") of
-                        "application/x-www-form-urlencoded" ++ _ ->
-                            mochiweb_util:parse_qs(ReqBody);
-                        _ ->
-                            MochiReq:parse_qs()
-                    end;
-                _OtherMethod ->
-                    MochiReq:parse_qs()
-            end;
-        HeaderString ->
-            ?LOG_DEBUG("OAuth Header: ~p", [HeaderString]),
-            oauth_uri:params_from_header_string(HeaderString)
-    end,
+    Params = oauth_uri:params_from_header_string(AuthHeader) ++ MochiReq:parse_qs(),
+    % TODO add support for POST here:
+    %case Method of
+    %    "POST" ->
+    %        case MochiReq:get_primary_header_value("content-type") of
+    %            "application/x-www-form-urlencoded" ++ _ ->
+    %                mochiweb_util:parse_qs(ReqBody);
+    %            _Else ->
+    %                []
+    %        end;
+    %    _OtherMethod ->
+    %        []
+    %end;
     ?LOG_DEBUG("OAuth Params: ~p", [Params]),
     case proplists:get_value("oauth_version", Params, "1.0") of
         "1.0" ->
