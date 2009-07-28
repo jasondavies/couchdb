@@ -146,7 +146,7 @@ couchTests.oauth = function(debug) {
 
   run_on_modified_server(
     [{section: "httpd",
-      key: "WWW-Authenticate", value: 'Basic realm=\\"administrator\\",OAuth'},
+      key: "WWW-Authenticate", value: 'Basic realm="administrator",OAuth'},
      {section: "couch_httpd_auth",
       key: "secret", value: generateSecret(64)},
      {section: "couch_httpd_auth",
