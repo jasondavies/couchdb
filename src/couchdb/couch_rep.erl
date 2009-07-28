@@ -609,7 +609,6 @@ do_http_request(Url, Action, Headers, Auth, JsonBody) ->
         {Props} ->
             % Add OAuth header
             {OAuth} = proplists:get_value(<<"oauth">>, Props),
-            ?LOG_DEBUG("OAuth: ~p", [OAuth]),
             ConsumerKey = ?b2l(proplists:get_value(<<"consumer_key">>, OAuth)),
             ConsumerSecret = ?b2l(proplists:get_value(<<"consumer_secret">>, OAuth)),
             Token = ?b2l(proplists:get_value(<<"token">>, OAuth)),
@@ -625,7 +624,6 @@ do_http_request(Url, Action, Headers, Auth, JsonBody) ->
         _Else ->
             Headers
     end,
-    ?LOG_DEBUG("OAuth? Headers: ~p", [Headers0]),
     do_http_request0(Url, Action, Headers0, JsonBody, 10, 1000).
 
 do_http_request0(Url, Action, Headers, Body, Retries, Pause) when is_binary(Url) ->
