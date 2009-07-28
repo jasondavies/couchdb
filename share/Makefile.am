@@ -93,6 +93,8 @@ nobase_dist_localdata_DATA = \
     www/script/jquery.resizer.js \
     www/script/jquery.suggest.js \
     www/script/json2.js \
+    www/script/oauth.js \
+    www/script/sha1.js \
     www/script/test/basics.js \
     www/script/test/delayed_commits.js \
     www/script/test/all_docs.js \
