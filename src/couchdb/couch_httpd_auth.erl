@@ -22,7 +22,6 @@
 -export([ensure_users_db_exists/1, get_user/2]).
 
 -import(couch_httpd, [header_value/2, send_json/2,send_json/4, send_method_not_allowed/2]).
--import(erlang, [integer_to_list/2, list_to_integer/2]).
 
 special_test_authentication_handler(Req) ->
     case header_value(Req, "WWW-Authenticate") of
@@ -217,7 +216,7 @@ cookie_auth_user(#httpd{mochi_req=MochiReq}=Req, DbName) ->
                         Hash = ?l2b(string:join(HashParts, ":")),
                         Timeout = to_int(couch_config:get("couch_httpd_auth", "timeout", 600)),
                         ?LOG_DEBUG("timeout ~p", [Timeout]),
-                        case (catch list_to_integer(TimeStr, 16)) of
+                        case (catch erlang:list_to_integer(TimeStr, 16)) of
                             TimeStamp when CurrentTime < TimeStamp + Timeout 
                             andalso ExpectedHash == Hash ->
                                 TimeLeft = TimeStamp + Timeout - CurrentTime,
@@ -263,7 +262,7 @@ cookie_auth_header(#httpd{user_ctx=#user_ctx{name=User}, auth={Secret, true}}, H
 cookie_auth_header(_Req, _Headers) -> [].
 
 cookie_auth_cookie(User, Secret, TimeStamp) ->
-    SessionData = User ++ ":" ++ integer_to_list(TimeStamp, 16),
+    SessionData = User ++ ":" ++ erlang:integer_to_list(TimeStamp, 16),
     Hash = crypto:sha_mac(Secret, SessionData),
     mochiweb_cookies:cookie("AuthSession",
         couch_util:encodeBase64Url(SessionData ++ ":" ++ ?b2l(Hash)),
@@ -477,7 +476,7 @@ handle_user_req(Req) ->
 to_int(Value) when is_binary(Value) ->
     to_int(?b2l(Value)); 
 to_int(Value) when is_list(Value) ->
-    list_to_integer(Value);
+    erlang:list_to_integer(Value);
 to_int(Value) when is_integer(Value) ->
     Value.
 
