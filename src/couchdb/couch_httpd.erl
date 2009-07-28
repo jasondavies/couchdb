@@ -24,8 +24,6 @@
 -export([send_response/4,send_method_not_allowed/2,send_error/4, send_redirect/2,send_chunked_error/2]).
 -export([send_json/2,send_json/3,send_json/4]).
 
--import(couch_httpd_auth, [cookie_auth_header/2]).
-
 start_link() ->
     % read config and register for configuration changes
 
@@ -236,7 +234,7 @@ primary_header_value(#httpd{mochi_req=MochiReq}, Key) ->
 
 serve_file(#httpd{mochi_req=MochiReq}=Req, RelativePath, DocumentRoot) ->
     {ok, MochiReq:serve_file(RelativePath, DocumentRoot,
-        server_header() ++ cookie_auth_header(Req, []))}.
+        server_header() ++ couch_httpd_auth:cookie_auth_header(Req, []))}.
 
 qs_value(Req, Key) ->
     qs_value(Req, Key, undefined).
@@ -334,7 +332,7 @@ verify_is_server_admin(#httpd{user_ctx=#user_ctx{roles=Roles}}) ->
 
 start_chunked_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers) ->
     couch_stats_collector:increment({httpd_status_codes, Code}),
-    {ok, MochiReq:respond({Code, Headers ++ server_header() ++ cookie_auth_header(Req, Headers), chunked})}.
+    {ok, MochiReq:respond({Code, Headers ++ server_header() ++ couch_httpd_auth:cookie_auth_header(Req, Headers), chunked})}.
 
 send_chunk(Resp, Data) ->
     Resp:write_chunk(Data),
@@ -346,7 +344,7 @@ send_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers, Body) ->
         ?LOG_DEBUG("httpd ~p error response:~n ~s", [Code, Body]);
     true -> ok
     end,
-    {ok, MochiReq:respond({Code, Headers ++ server_header() ++ cookie_auth_header(Req, Headers), Body})}.
+    {ok, MochiReq:respond({Code, Headers ++ server_header() ++ couch_httpd_auth:cookie_auth_header(Req, Headers), Body})}.
 
 send_method_not_allowed(Req, Methods) ->
     send_response(Req, 405, [{"Allow", Methods}], <<>>).
