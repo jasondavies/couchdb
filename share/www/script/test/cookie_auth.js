@@ -96,54 +96,51 @@ couchTests.cookie_auth = function(debug) {
       
       usersDb.deleteDb();
       // test user creation
-      T(CouchDB.create_user("test", "testpassword", "test@somemail.com", ['read', 'write']).ok);
+      T(CouchDB.createUser("test", "testpassword", "test@somemail.com", ['read', 'write']).ok);
       
       // make sure we create a unique user
-      T(!CouchDB.create_user("test", "testpassword2", "test2@somemail.com", ['read', 'write']).ok);
+      T(!CouchDB.createUser("test", "testpassword2", "test2@somemail.com", ['read', 'write']).ok);
       
       // test login
       T(CouchDB.login("test", "testpassword").ok);
       T(!CouchDB.login('test', "testpassword2").ok);
       
       // test update user without changing password
-      T(CouchDB.update_user("test", "test2@somemail.com").ok);
+      T(CouchDB.updateUser("test", "test2@somemail.com").ok);
       result = usersDb.view("_auth/users", {key: "test"});
       T(result.rows[0].value['email'] == "test2@somemail.com");
        
        
       // test changing password
       result = usersDb.view("_auth/users", {key: "test"});
-      T(CouchDB.update_user("test", "test2@somemail.com", [], "testpassword2", "testpassword").ok);
+      T(CouchDB.updateUser("test", "test2@somemail.com", [], "testpassword2", "testpassword").ok);
       result1 = usersDb.view("_auth/users", {key: "test"});
       T(result.rows[0].value['password_sha'] != result1.rows[0].value['password_sha']);
       
       
       // test changing password with passing old password
-      T(!CouchDB.update_user("test", "test2@somemail.com", [], "testpassword2").ok);
+      T(!CouchDB.updateUser("test", "test2@somemail.com", [], "testpassword2").ok);
       
       // test changing password whith bad old password
-      T(!CouchDB.update_user("test", "test2@somemail.com", [], "testpassword2", "badpasswword").ok);
+      T(!CouchDB.updateUser("test", "test2@somemail.com", [], "testpassword2", "badpasswword").ok);
       
       // Only admins can change roles
-      T(!CouchDB.update_user("test", "test2@somemail.com", ['read', 'write']).ok);
+      T(!CouchDB.updateUser("test", "test2@somemail.com", ['read', 'write']).ok);
       
       T(CouchDB.logout().ok);
       
-      T(CouchDB.update_user("test", "test2@somemail.com").ok);
+      T(CouchDB.updateUser("test", "test2@somemail.com").ok);
       result = usersDb.view("_auth/users", {key: "test"});
       T(result.rows[0].value['email'] == "test2@somemail.com");
 
-
       // test changing password, we don't need to set old password when we are admin
       result = usersDb.view("_auth/users", {key: "test"});
-      T(CouchDB.update_user("test", "test2@somemail.com", [], "testpassword3").ok);
+      T(CouchDB.updateUser("test", "test2@somemail.com", [], "testpassword3").ok);
       result1 = usersDb.view("_auth/users", {key: "test"});
       T(result.rows[0].value['password_sha'] != result1.rows[0].value['password_sha']);
 
       // Only admins can change roles
-      T(CouchDB.update_user("test", "test2@somemail.com", ['read']).ok);
-
-      
+      T(CouchDB.updateUser("test", "test2@somemail.com", ['read']).ok);
 
     } finally {
       // Make sure we erase any auth cookies so we don't affect other tests

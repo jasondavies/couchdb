@@ -83,7 +83,7 @@ couchTests.oauth = function(debug) {
       usersDb.createDb();
       
       // Create a user
-      T(CouchDB.create_user("jason", "testpassword", "test@somemail.com", ['test']).ok);
+      T(CouchDB.createUser("jason", "testpassword", "test@somemail.com", ['test'], true).ok);
 
       var accessor = {
         consumerSecret: consumerSecret,
