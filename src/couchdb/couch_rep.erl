@@ -610,7 +610,6 @@ do_http_request(Url, Action, Headers, Auth, JsonBody) ->
             % Add OAuth header
             {OAuth} = proplists:get_value(<<"oauth">>, Props),
             ConsumerKey = ?b2l(proplists:get_value(<<"consumer_key">>, OAuth)),
-            ConsumerSecret = ?b2l(proplists:get_value(<<"consumer_secret">>, OAuth)),
             Token = ?b2l(proplists:get_value(<<"token">>, OAuth)),
             TokenSecret = ?b2l(proplists:get_value(<<"token_secret">>, OAuth)),
             Consumer = {ConsumerKey, TokenSecret, hmac_sha1},
