@@ -111,7 +111,7 @@ serve_oauth_authorize(#httpd{method=Method}=Req) ->
             couch_httpd:send_method_not_allowed(Req, "GET,POST")
     end.
 
-serve_oauth(#httpd{mochi_req=MochiReq, req_body=ReqBody, method=Method}=Req, Fun, FailSilently) ->
+serve_oauth(#httpd{mochi_req=MochiReq}=Req, Fun, FailSilently) ->
     % 1. In the HTTP Authorization header as defined in OAuth HTTP Authorization Scheme.
     % 2. As the HTTP POST request body with a content-type of application/x-www-form-urlencoded.
     % 3. Added to the URLs in the query part (as defined by [RFC3986] section 3).
@@ -122,22 +122,12 @@ serve_oauth(#httpd{mochi_req=MochiReq, req_body=ReqBody, method=Method}=Req, Fun
             [Head | Tail] = re:split(Else, "\\s", [{parts, 2}, {return, list}]),
             case [string:to_lower(Head) | Tail] of
                 ["oauth", Rest] -> Rest;
-                _Else -> ""
+                _ -> ""
             end
     end,
-    Params = oauth_uri:params_from_header_string(AuthHeader) ++ MochiReq:parse_qs(),
-    % TODO add support for POST here:
-    %case Method of
-    %    "POST" ->
-    %        case MochiReq:get_primary_header_value("content-type") of
-    %            "application/x-www-form-urlencoded" ++ _ ->
-    %                mochiweb_util:parse_qs(ReqBody);
-    %            _Else ->
-    %                []
-    %        end;
-    %    _OtherMethod ->
-    %        []
-    %end;
+    HeaderParams = oauth_uri:params_from_header_string(AuthHeader),
+    %Realm = proplists:get_value("realm", HeaderParams),
+    Params = proplists:delete("realm", HeaderParams) ++ MochiReq:parse_qs(),
     ?LOG_DEBUG("OAuth Params: ~p", [Params]),
     case proplists:get_value("oauth_version", Params, "1.0") of
         "1.0" ->
@@ -155,8 +145,7 @@ serve_oauth(#httpd{mochi_req=MochiReq, req_body=ReqBody, method=Method}=Req, Fun
                         Consumer ->
                             Signature = proplists:get_value("oauth_signature", Params),
                             URL = couch_httpd:absolute_uri(Req, MochiReq:get(path)),
-                            Fun(URL, proplists:delete("oauth_signature",
-                                     proplists:delete("realm", Params)),
+                            Fun(URL, proplists:delete("oauth_signature", Params),
                                 Consumer, Signature)
                     end
             end;

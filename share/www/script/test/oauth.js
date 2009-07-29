@@ -58,6 +58,7 @@ couchTests.oauth = function(debug) {
   }
 
   var consumerSecret = generateSecret(64);
+  var tokenSecret = generateSecret(64);
 
   var host = CouchDB.host;
   var dbPair = {
@@ -67,7 +68,7 @@ couchTests.oauth = function(debug) {
         oauth: {
           consumer_key: "key",
           consumer_secret: consumerSecret,
-          token_secret: "bar",
+          token_secret: tokenSecret,
           token: "foo"
         }
       }
@@ -87,7 +88,7 @@ couchTests.oauth = function(debug) {
 
       var accessor = {
         consumerSecret: consumerSecret,
-        tokenSecret: "bar"
+        tokenSecret: tokenSecret
       };
 
       var signatureMethods = ["PLAINTEXT", "HMAC-SHA1"];
@@ -101,7 +102,7 @@ couchTests.oauth = function(debug) {
               oauth_signature_method: signatureMethods[i],
               oauth_consumer_key: consumerKey,
               oauth_token: "foo",
-              oauth_token_secret: "bar",
+              oauth_token_secret: tokenSecret,
               oauth_version: "1.0"
             }
           };
@@ -110,12 +111,7 @@ couchTests.oauth = function(debug) {
           xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor);
           T(xhr.status == expectedCode);
 
-          // POST request token
-          //De-activated this for now as we don't need to support POSTing OAuth at least for now
-          //xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor, "POST");
-          //T(xhr.status == 200);
-
-          // GET request token
+          // GET request token via query parameters
           xhr = oauthRequest("http://" + host + "/_oauth/request_token", message, accessor, "GET");
           T(xhr.status == expectedCode);
 
@@ -159,7 +155,7 @@ couchTests.oauth = function(debug) {
      {section: "oauth_token_users",
       key: "foo", value: "jason"},
      {section: "oauth_token_secrets",
-      key: "foo", value: "bar"},
+      key: "foo", value: tokenSecret},
      {section: "couch_httpd_oauth",
       key: "authorization_url", value: authorization_url},
      {section: "httpd",
