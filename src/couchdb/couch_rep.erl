@@ -612,7 +612,8 @@ do_http_request(Url, Action, Headers, Auth, JsonBody) ->
             ConsumerKey = ?b2l(proplists:get_value(<<"consumer_key">>, OAuth)),
             Token = ?b2l(proplists:get_value(<<"token">>, OAuth)),
             TokenSecret = ?b2l(proplists:get_value(<<"token_secret">>, OAuth)),
-            Consumer = {ConsumerKey, TokenSecret, hmac_sha1},
+            ConsumerSecret = ?b2l(proplists:get_value(<<"consumer_secret">>, OAuth)),
+            Consumer = {ConsumerKey, ConsumerSecret, hmac_sha1},
             Method = case Action of
                 get -> "GET";
                 post -> "POST";
