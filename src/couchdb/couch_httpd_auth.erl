@@ -73,9 +73,10 @@ default_authentication_handler(Req) ->
         true ->
             Req;
         false ->
-            % if no admins, then everyone is admin! Yay, admin party!
             case couch_config:get("couch_httpd_auth", "require_valid_user", "false") of
                 "true" -> Req;
+                % If no admins, and no user required, then everyone is admin!
+                % Yay, admin party!
                 _ -> Req#httpd{user_ctx=#user_ctx{roles=[<<"_admin">>]}}
             end
         end
