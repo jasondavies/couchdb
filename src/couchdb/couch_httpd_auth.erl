@@ -69,16 +69,14 @@ default_authentication_handler(Req) ->
             throw({unauthorized, <<"Name or password is incorrect.">>})
         end;
     nil ->
-        case couch_config:get("couch_httpd_auth", "require_valid_user", "0") of
-        "1" ->
-            throw({unauthorized, <<"Authentication required.">>});
-        _ ->
         case couch_server:has_admins() of
-            true ->
-                Req#httpd{user_ctx=#user_ctx{}};
-            false ->
-                % if no admins, then everyone is admin! Yay, admin party!
-                Req#httpd{user_ctx=#user_ctx{roles=[<<"_admin">>]}}
+        true ->
+            Req;
+        false ->
+            % if no admins, then everyone is admin! Yay, admin party!
+            case couch_config:get("couch_httpd_auth", "require_valid_user", "0") of
+                "1" -> Req;
+                _ -> Req#httpd{user_ctx=#user_ctx{roles=[<<"_admin">>]}}
             end
         end
     end.

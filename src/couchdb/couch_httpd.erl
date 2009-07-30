@@ -173,12 +173,18 @@ handle_request(MochiReq, DefaultFun,
     {ok, Resp} =
     try
         % Try authentication handlers in order until one returns a result
-        case lists:foldl(fun(Fun, #httpd{user_ctx=#user_ctx{}}=Req) -> Req;
+        case lists:foldl(fun(_Fun, #httpd{user_ctx=#user_ctx{}}=Req) -> Req;
                     (Fun, #httpd{}=Req) -> Fun(Req);
-                    (Fun, Response) -> Response
+                    (_Fun, Response) -> Response
                 end, HttpReq, AuthenticationFuns) of
             #httpd{user_ctx=#user_ctx{}}=Req -> HandlerFun(Req);
-            #httpd{}=Req -> HandlerFun(Req#httpd{user_ctx=#user_ctx{}});
+            #httpd{}=Req ->
+                case couch_config:get("couch_httpd_auth", "require_valid_user", "0") of
+                    "1" ->
+                        throw({unauthorized, <<"Authentication required.">>});
+                    _ ->
+                        HandlerFun(Req#httpd{user_ctx=#user_ctx{}})
+                end;
             Response -> Response
         end
     catch
