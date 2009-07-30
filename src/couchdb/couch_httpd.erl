@@ -179,8 +179,8 @@ handle_request(MochiReq, DefaultFun,
                 end, HttpReq, AuthenticationFuns) of
             #httpd{user_ctx=#user_ctx{}}=Req -> HandlerFun(Req);
             #httpd{}=Req ->
-                case couch_config:get("couch_httpd_auth", "require_valid_user", "0") of
-                    "1" ->
+                case couch_config:get("couch_httpd_auth", "require_valid_user", "false") of
+                    "true" ->
                         throw({unauthorized, <<"Authentication required.">>});
                     _ ->
                         HandlerFun(Req#httpd{user_ctx=#user_ctx{}})
