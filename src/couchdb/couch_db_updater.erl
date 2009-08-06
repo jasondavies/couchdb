@@ -423,7 +423,7 @@ merge_rev_trees(MergeConflicts, [NewDocs|RestDocsList],
                 {NewTree, no_conflicts} when  AccTree == NewTree ->
                     % the tree didn't change at all
                     % meaning we are saving a rev that's already
-                    % been editted again.
+                    % been edited again.
                     if (Pos == 1) and OldDeleted ->
                         % this means we are recreating a brand new document
                         % into a state that already existed before.
