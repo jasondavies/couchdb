@@ -420,7 +420,7 @@ merge_rev_trees(MergeConflicts, [NewDocs|RestDocsList],
                 case couch_key_tree:merge(AccTree, [couch_db:doc_to_tree(NewDoc)]) of
                 {_NewTree, conflicts} when (not OldDeleted) ->
                     {AccTree, [{{Id, {Pos-1,PrevRevs}}, conflict} | AccConflicts2]};
-                {NewTree, no_conflicts} when  AccTree == NewTree ->
+                {NewTree, no_conflicts} when AccTree == NewTree ->
                     % the tree didn't change at all
                     % meaning we are saving a rev that's already
                     % been edited again.
