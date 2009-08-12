@@ -226,7 +226,7 @@ reader_loop(ReaderServer, Source, MissingRevsServer) ->
                 || {Id,Revs} <- IdsRevs];
         _Local ->
             lists:foreach(fun({Id,Revs}) ->
-                {ok, Docs} = couch_db:open_doc_revs(Source, Id, Revs, [latest]),
+                {ok, Docs} = couch_db:open_doc_revs(Source, Id, Revs, []), %[latest]),
                 JustTheDocs = [Doc || {ok, Doc} <- Docs],
                 gen_server:call(ReaderServer, {add_docs, JustTheDocs})
             end, IdsRevs),

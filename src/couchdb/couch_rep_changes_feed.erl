@@ -267,7 +267,8 @@ by_seq_loop(Server, Source, StartSeq) ->
         RawRevs = [
             proplists:get_value(<<"rev">>, RowProps),
             proplists:get_value(<<"conflicts">>, RowProps, []),
-            proplists:get_value(<<"deleted_conflicts">>, RowProps, [])
+            proplists:get_value(<<"deleted_conflicts">>, RowProps, []),
+            proplists:get_value(<<"history">>, RowProps, [])
         ],
         ParsedRevs = couch_doc:parse_revs(lists:flatten(RawRevs)),
         Change = {[

@@ -427,9 +427,11 @@ db_req(#httpd{method='GET',path_parts=[_,<<"_all_docs_by_seq">>]}=Req, Db) ->
                     revs=[#rev_info{rev=Rev,deleted=Deleted} | RestInfo]
                 } = DocInfo,
                 ConflictRevs = couch_doc:rev_to_strs(
-                    [Rev1 || #rev_info{deleted=false, rev=Rev1} <- RestInfo]),
+                    [Rev1 || #rev_info{deleted=false, historical=false, rev=Rev1} <- RestInfo]),
                 DelConflictRevs = couch_doc:rev_to_strs(
-                    [Rev1 || #rev_info{deleted=true, rev=Rev1} <- RestInfo]),
+                    [Rev1 || #rev_info{deleted=true, historical=false, rev=Rev1} <- RestInfo]),
+                HistoryRevs = couch_doc:rev_to_strs(
+                    [Rev1 || #rev_info{historical=true, rev=Rev1} <- RestInfo]),
                 Json = {
                     [{<<"rev">>, couch_doc:rev_to_str(Rev)}] ++
                     case ConflictRevs of
@@ -439,6 +441,10 @@ db_req(#httpd{method='GET',path_parts=[_,<<"_all_docs_by_seq">>]}=Req, Db) ->
                     case DelConflictRevs of
                     []  ->  [];
                     _   ->  [{<<"deleted_conflicts">>, DelConflictRevs}]
+                    end ++
+                    case HistoryRevs of
+                    []  ->  [];
+                    _   ->  [{<<"history">>, HistoryRevs}]
                     end ++
                     case Deleted of
                     true -> [{<<"deleted">>, true}];
@@ -600,6 +606,7 @@ all_docs_view(Req, Db, Keys) ->
 db_doc_req(#httpd{method='DELETE'}=Req, Db, DocId) ->
     % check for the existence of the doc to handle the 404 case.
     couch_doc_open(Db, DocId, nil, []),
+    %TODO add ?forget=true
     case couch_httpd:qs_value(Req, "rev") of
     undefined ->
         update_doc(Req, Db, DocId, {[{<<"_deleted">>,true}]});

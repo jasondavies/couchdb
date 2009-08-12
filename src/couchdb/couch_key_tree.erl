@@ -14,7 +14,7 @@
 
 -export([merge/2, find_missing/2, get_key_leafs/2, get_full_key_paths/2, get/2]).
 -export([map/2, get_all_leafs/1, count_leafs/1, remove_leafs/2,
-    get_all_leafs_full/1,stem/2,map_leafs/2]).
+    get_all_leafs_full/1,stem/2,map_leafs/2,get_all_nodes/1]).
 
 % a key tree looks like this:
 % Tree -> [] or [{Key, Value, ChildTree} | SiblingTree]
@@ -260,6 +260,23 @@ get_all_leafs_simple(Pos, [{KeyId, Value, []} | RestTree], KeyPathAcc) ->
     [{Value, {Pos, [KeyId | KeyPathAcc]}} | get_all_leafs_simple(Pos, RestTree, KeyPathAcc)];
 get_all_leafs_simple(Pos, [{KeyId, _Value, SubTree} | RestTree], KeyPathAcc) ->
     get_all_leafs_simple(Pos + 1, SubTree, [KeyId | KeyPathAcc]) ++ get_all_leafs_simple(Pos, RestTree, KeyPathAcc).
+
+
+get_all_nodes(Trees) ->
+    get_all_nodes(Trees, []).
+
+get_all_nodes([], Acc) ->
+    Acc;
+get_all_nodes([{Pos, Tree}|Rest], Acc) ->
+    get_all_nodes(Rest, get_all_nodes_simple(Pos, [Tree], []) ++ Acc).
+
+get_all_nodes_simple(_Pos, [], _KeyPathAcc) ->
+    [];
+get_all_nodes_simple(Pos, [{KeyId, Value, []} | RestTree], KeyPathAcc) ->
+    [{Value, {Pos, [KeyId | KeyPathAcc]}, leaf} | get_all_nodes_simple(Pos, RestTree, KeyPathAcc)];
+get_all_nodes_simple(Pos, [{KeyId, Value, SubTree} | RestTree], KeyPathAcc) ->
+    [{Value, {Pos, [KeyId | KeyPathAcc]}, branch} | get_all_nodes_simple(Pos + 1, SubTree, [KeyId | KeyPathAcc])] ++
+        get_all_nodes_simple(Pos, RestTree, KeyPathAcc).
 
 
 count_leafs([]) ->

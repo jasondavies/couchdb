@@ -202,12 +202,14 @@ code_change(_OldVsn, State, _Extra) ->
 
 btree_by_seq_split(#doc_info{id=Id, high_seq=KeySeq, revs=Revs}) ->
     RevInfos = [{Rev, Seq, Bp} ||
-        #rev_info{rev=Rev,seq=Seq,deleted=false,body_sp=Bp} <- Revs],
+        #rev_info{rev=Rev,seq=Seq,historical=false,deleted=false,body_sp=Bp} <- Revs],
     DeletedRevInfos = [{Rev, Seq, Bp} ||
-        #rev_info{rev=Rev,seq=Seq,deleted=true,body_sp=Bp} <- Revs],
-    {KeySeq,{Id, RevInfos, DeletedRevInfos}}.
+        #rev_info{rev=Rev,seq=Seq,historical=false,deleted=true,body_sp=Bp} <- Revs],
+    HistoryRevInfos = [{Rev, Seq, Bp} ||
+        #rev_info{rev=Rev,seq=Seq,historical=true,body_sp=Bp} <- Revs],
+    {KeySeq,{Id, RevInfos, DeletedRevInfos, HistoryRevInfos}}.
 
-btree_by_seq_join(KeySeq, {Id, RevInfos, DeletedRevInfos}) ->
+btree_by_seq_join(KeySeq, {Id, RevInfos, DeletedRevInfos, HistoryRevInfos}) ->
     #doc_info{
         id = Id,
         high_seq=KeySeq,
@@ -215,7 +217,9 @@ btree_by_seq_join(KeySeq, {Id, RevInfos, DeletedRevInfos}) ->
             [#rev_info{rev=Rev,seq=Seq,deleted=false,body_sp = Bp} ||
                 {Rev, Seq, Bp} <- RevInfos] ++
             [#rev_info{rev=Rev,seq=Seq,deleted=true,body_sp = Bp} ||
-                {Rev, Seq, Bp} <- DeletedRevInfos]};
+                {Rev, Seq, Bp} <- DeletedRevInfos] ++
+            [#rev_info{rev=Rev,seq=Seq,historical=true,body_sp = Bp} ||
+                {Rev, Seq, Bp} <- HistoryRevInfos]};
 btree_by_seq_join(KeySeq,{Id, Rev, Bp, Conflicts, DelConflicts, Deleted}) ->
     % 09 UPGRADE CODE
     % this is the 0.9.0 and earlier by_seq record. It's missing the body pointers
@@ -652,8 +656,10 @@ copy_rev_tree_attachments(SrcDb, DestFd, Tree) ->
         fun(Rev, {IsDel, Sp, Seq}, leaf) ->
             DocBody = copy_doc_attachments(SrcDb, Rev, Sp, DestFd),
             {IsDel, DocBody, Seq};
-        (_, _, branch) ->
-            ?REV_MISSING
+        (Rev, {IsDel, Sp, Seq}, branch) ->
+            DocBody = copy_doc_attachments(SrcDb, Rev, Sp, DestFd),
+            {IsDel, DocBody, Seq}
+            %?REV_MISSING
         end, Tree).
             
 
@@ -671,8 +677,8 @@ copy_docs(Db, #db{fd=DestFd}=NewDb, InfoBySeq, Retry) ->
     % view indexing and replication faster.
     NewFullDocInfos1 = lists:map(
         fun(#full_doc_info{rev_tree=RevTree}=Info) ->
-            Info#full_doc_info{rev_tree=couch_key_tree:map_leafs(
-                fun(_Key, {IsDel, DocBody, Seq}) ->
+            Info#full_doc_info{rev_tree=couch_key_tree:map(
+                fun(_Key, {IsDel, DocBody, Seq}, _) ->
                     {ok, Pos} = couch_file:append_term_md5(DestFd, DocBody),
                     {IsDel, Pos, Seq}
                 end, RevTree)}

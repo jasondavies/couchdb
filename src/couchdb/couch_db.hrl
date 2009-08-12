@@ -43,6 +43,7 @@
     rev,
     seq = 0,
     deleted = false,
+    historical = false,
     body_sp = nil % stream pointer
     }).
 
