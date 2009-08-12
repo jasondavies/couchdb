@@ -586,9 +586,11 @@ all_docs_by_seq_view(Req, Db) ->
                     revs=[#rev_info{rev=Rev,deleted=Deleted} | RestInfo]
                 } = DocInfo,
                 ConflictRevs = couch_doc:rev_to_strs(
-                    [Rev1 || #rev_info{deleted=false, rev=Rev1} <- RestInfo]),
+                    [Rev1 || #rev_info{deleted=false, historical=false, rev=Rev1} <- RestInfo]),
                 DelConflictRevs = couch_doc:rev_to_strs(
-                    [Rev1 || #rev_info{deleted=true, rev=Rev1} <- RestInfo]),
+                    [Rev1 || #rev_info{deleted=true, historical=false, rev=Rev1} <- RestInfo]),
+                HistoryRevs = couch_doc:rev_to_strs(
+                    [Rev1 || #rev_info{historical=true, rev=Rev1} <- RestInfo]),
                 Json = {
                     [{<<"rev">>, couch_doc:rev_to_str(Rev)}] ++
                     case ConflictRevs of
