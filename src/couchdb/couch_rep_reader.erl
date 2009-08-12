@@ -212,6 +212,8 @@ open_doc_revs(#http_db{} = DbS, DocId, Revs) ->
     [Transform(Result) || Result <- JsonResults].
 
 reader_loop(ReaderServer, Source, MissingRevsServer) ->
+    History = false, %couch_config:get("history", "dbname"),
+    OpenDocRevsOptions = if History -> []; true -> [latest] end,
     case couch_rep_missing_revs:next(MissingRevsServer) of
     complete ->
         % ?LOG_INFO("reader_loop terminating with complete", []),
@@ -226,7 +228,7 @@ reader_loop(ReaderServer, Source, MissingRevsServer) ->
                 || {Id,Revs} <- IdsRevs];
         _Local ->
             lists:foreach(fun({Id,Revs}) ->
-                {ok, Docs} = couch_db:open_doc_revs(Source, Id, Revs, []), %[latest]),
+                {ok, Docs} = couch_db:open_doc_revs(Source, Id, Revs, OpenDocRevsOptions),
                 JustTheDocs = [Doc || {ok, Doc} <- Docs],
                 gen_server:call(ReaderServer, {add_docs, JustTheDocs})
             end, IdsRevs),
