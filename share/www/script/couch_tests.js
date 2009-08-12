@@ -51,7 +51,6 @@ loadTest("design_paths.js");
 loadTest("content_negotiation.js");
 loadTest("design_docs.js");
 loadTest("invalid_docids.js");
-loadTest("view_builtin.js");
 loadTest("view_collation.js");
 loadTest("view_conflicts.js");
 loadTest("view_errors.js");
@@ -81,6 +80,7 @@ loadScript("script/oauth.js");
 loadTest("oauth.js");
 loadTest("stats.js");
 loadTest("rev_stemming.js");
+loadTest("erlang_views.js");
 
 function makeDocs(start, end, templateDoc) {
   var templateDocSrc = templateDoc ? JSON.stringify(templateDoc) : "{}"

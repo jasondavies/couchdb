@@ -127,8 +127,8 @@ function CouchDB(name, httpHeaders) {
   }
 
   // Applies the map function to the contents of database and returns the results.
-  this.query = function(mapFun, reduceFun, options, keys) {
-    var body = {language: "javascript"};
+  this.query = function(mapFun, reduceFun, options, keys, language) {
+    var body = {language: language || "javascript"};
     if(keys) {
       body.keys = keys ;
     }
@@ -191,18 +191,10 @@ function CouchDB(name, httpHeaders) {
   }
 
   this.allDocs = function(options,keys) {
-    return this.builtinView("_all_docs", options, keys)
-  }
-
-  this.conflicts = function(options,keys) {
-    return this.builtinView("_conflicts", options, keys)
-  }
-
-  this.builtinView = function(name, options, keys) {
     if(!keys) {
-      this.last_req = this.request("GET", this.uri + name + encodeOptions(options));
+      this.last_req = this.request("GET", this.uri + "_all_docs" + encodeOptions(options));
     } else {
-      this.last_req = this.request("POST", this.uri + name + encodeOptions(options), {
+      this.last_req = this.request("POST", this.uri + "_all_docs" + encodeOptions(options), {
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({keys:keys})
       });
