@@ -761,11 +761,17 @@ update_doc(Req, Db, DocId, Json) ->
 update_doc(Req, Db, DocId, Json, Headers) ->
     #doc{deleted=Deleted} = Doc = couch_doc_from_req(Req, DocId, Json),
 
-    case couch_httpd:header_value(Req, "X-Couch-Full-Commit", "false") of
+    Options = case couch_httpd:header_value(Req, "X-Couch-Full-Commit", "false") of
     "true" ->
-        Options = [full_commit];
+        [full_commit];
     _ ->
-        Options = []
+        []
+    end ++
+    case couch_httpd:qs_value(Req, "forget") of
+    "true" ->
+        [merge_conflicts];
+    _ ->
+        []
     end,
     {ok, NewRev} = couch_db:update_doc(Db, Doc, Options),
     NewRevStr = couch_doc:rev_to_str(NewRev),
