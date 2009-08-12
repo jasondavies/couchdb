@@ -20,14 +20,11 @@ start_link(Parent, Target, Reader, _PostProps) ->
     {ok, spawn_link(fun() -> writer_loop(Parent, Reader, Target) end)}.
 
 writer_loop(Parent, Reader, Target) ->
-    % ?LOG_DEBUG("writer loop begin", []),
     case couch_rep_reader:next(Reader) of
     {complete, FinalSeq} ->
-        % ?LOG_INFO("writer terminating normally", []),
         Parent ! {writer_checkpoint, FinalSeq},
         ok;
     {HighSeq, Docs} ->
-        % ?LOG_DEBUG("writer loop trying to write ~p", [Docs]),
         DocCount = length(Docs),
         try write_docs(Target, Docs) of
         {ok, []} ->
