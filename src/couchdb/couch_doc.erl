@@ -255,7 +255,7 @@ max_seq([#rev_info{seq=Seq}|Rest], Max) ->
     max_seq(Rest, if Max > Seq -> Max; true -> Seq end).
 
 to_doc_info_path(#full_doc_info{id=Id,rev_tree=Tree}) ->
-    History = true,
+    History = false,
     RevInfosAndPath =
         if History ->
             [{#rev_info{deleted=Del,historical=NodeType==branch,body_sp=Bp,seq=Seq,rev={Pos,RevId}}, Path} ||
