@@ -37,7 +37,11 @@
 -define(LOG_ERROR(Format, Args),
     error_logger:error_report(couch_error, {Format, Args})).
 
--define(HISTORY_ENABLED, false).
+-define(HISTORY_ENABLED(DbName),
+    case couch_config:get("history", DbName, "false") of
+        "true" -> true;
+        _Else -> false
+    end).
 
 
 -record(rev_info,

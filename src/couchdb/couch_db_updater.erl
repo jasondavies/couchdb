@@ -200,12 +200,12 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 
-btree_by_seq_split(#doc_info{id=Id, high_seq=KeySeq, revs=Revs}) ->
+btree_by_seq_split(#doc_info{id=Id, high_seq=KeySeq, revs=Revs}, HistoryEnabled) ->
     RevInfos = [{Rev, Seq, Bp} ||
         #rev_info{rev=Rev,seq=Seq,historical=false,deleted=false,body_sp=Bp} <- Revs],
     DeletedRevInfos = [{Rev, Seq, Bp} ||
         #rev_info{rev=Rev,seq=Seq,historical=false,deleted=true,body_sp=Bp} <- Revs],
-    HistoryRevInfos = if ?HISTORY_ENABLED -> [{Rev, Seq, Bp} ||
+    HistoryRevInfos = if HistoryEnabled -> [{Rev, Seq, Bp} ||
         #rev_info{rev=Rev,seq=Seq,historical=true,body_sp=Bp} <- Revs];
         true -> [] end,
     {KeySeq,{Id, RevInfos, DeletedRevInfos, HistoryRevInfos}}.
@@ -329,8 +329,9 @@ init_db(DbName, Filepath, Fd, Header0) ->
         {join, fun(X,Y) -> btree_by_id_join(X,Y) end},
         {reduce, fun(X,Y) -> btree_by_id_reduce(X,Y) end},
         {less, Less}]),
+    HistoryEnabled = ?HISTORY_ENABLED(DbName),
     {ok, SeqBtree} = couch_btree:open(Header#db_header.docinfo_by_seq_btree_state, Fd,
-            [{split, fun(X) -> btree_by_seq_split(X) end},
+            [{split, fun(X) -> btree_by_seq_split(X,HistoryEnabled) end},
             {join, fun(X,Y) -> btree_by_seq_join(X,Y) end},
             {reduce, fun(X,Y) -> btree_by_seq_reduce(X,Y) end}]),
     {ok, LocalDocsBtree} = couch_btree:open(Header#db_header.local_docs_btree_state, Fd),
@@ -664,27 +665,28 @@ copy_doc_attachments(#db{fd=SrcFd}=SrcDb, {Pos,_RevId}, SrcSp, DestFd) ->
         end, BinInfos),
     {BodyData, NewBinInfos}.
 
-copy_rev_tree_attachments(SrcDb, DestFd, Tree) ->
+copy_rev_tree_attachments(SrcDb, DestFd, HistoryEnabled, Tree) ->
     couch_key_tree:map(
         fun(Rev, {IsDel, Sp, Seq}, leaf) ->
             DocBody = copy_doc_attachments(SrcDb, Rev, Sp, DestFd),
             {IsDel, DocBody, Seq};
         (Rev, {IsDel, Sp, Seq}, branch) ->
-            if ?HISTORY_ENABLED ->
+            if HistoryEnabled ->
                 DocBody = copy_doc_attachments(SrcDb, Rev, Sp, DestFd),
                 {IsDel, DocBody, Seq};
             true -> ?REV_MISSING end
         end, Tree).
 
 
-copy_docs(Db, #db{fd=DestFd}=NewDb, InfoBySeq, Retry) ->
+copy_docs(Db, #db{fd=DestFd,name=DestDbName}=NewDb, InfoBySeq, Retry) ->
     Ids = [Id || #doc_info{id=Id} <- InfoBySeq],
     LookupResults = couch_btree:lookup(Db#db.fulldocinfo_by_id_btree, Ids),
 
     % write out the attachments
+    HistoryEnabled = ?HISTORY_ENABLED(DestDbName),
     NewFullDocInfos0 = lists:map(
         fun({ok, #full_doc_info{rev_tree=RevTree}=Info}) ->
-            Info#full_doc_info{rev_tree=copy_rev_tree_attachments(Db, DestFd, RevTree)}
+            Info#full_doc_info{rev_tree=copy_rev_tree_attachments(Db, DestFd, HistoryEnabled, RevTree)}
         end, LookupResults),
     % write out the docs
     % we do this in 2 stages so the docs are written out contiguously, making
@@ -695,7 +697,7 @@ copy_docs(Db, #db{fd=DestFd}=NewDb, InfoBySeq, Retry) ->
     end,
     NewFullDocInfos1 = lists:map(
         fun(#full_doc_info{rev_tree=RevTree}=Info) ->
-            Info#full_doc_info{rev_tree=if ?HISTORY_ENABLED -> couch_key_tree:map(RevTreeMapFun, RevTree);
+            Info#full_doc_info{rev_tree=if HistoryEnabled -> couch_key_tree:map(RevTreeMapFun, RevTree);
                 true -> couch_key_tree:map_leafs(RevTreeMapFun, RevTree) end}
         end, NewFullDocInfos0),
 

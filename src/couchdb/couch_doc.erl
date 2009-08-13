@@ -256,7 +256,7 @@ max_seq([#rev_info{seq=Seq}|Rest], Max) ->
 
 to_doc_info_path(#full_doc_info{id=Id,rev_tree=Tree}) ->
     RevInfosAndPath =
-        if ?HISTORY_ENABLED ->
+        if true -> % ?HISTORY_ENABLED
             [{#rev_info{deleted=Del,historical=NodeType==branch,body_sp=Bp,seq=Seq,rev={Pos,RevId}}, Path} ||
                 {{Del, Bp, Seq},{Pos, [RevId|_]}=Path,NodeType} <- couch_key_tree:get_all_nodes(Tree)];
         true ->
