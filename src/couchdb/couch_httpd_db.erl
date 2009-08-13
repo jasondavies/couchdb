@@ -557,9 +557,9 @@ all_docs_view(Req, Db, Keys) ->
                 }),
             AdapterFun = fun(#full_doc_info{id=Id}=FullDocInfo, Offset, Acc) ->
                 case couch_doc:to_doc_info(FullDocInfo) of
-                #doc_info{revs=[#rev_info{deleted=false, rev=Rev}|_]} ->
+                #doc_info{revs=[#rev_info{deleted=false, historical=false, rev=Rev}|_]} ->
                     FoldlFun({{Id, Id}, {[{rev, couch_doc:rev_to_str(Rev)}]}}, Offset, Acc);
-                #doc_info{revs=[#rev_info{deleted=true}|_]} ->
+                #doc_info{revs=[#rev_info{deleted=true, historical=false}|_]} ->
                     {ok, Acc}
                 end
             end,

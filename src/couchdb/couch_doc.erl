@@ -264,10 +264,10 @@ to_doc_info_path(#full_doc_info{id=Id,rev_tree=Tree}) ->
                 {{Del, Bp, Seq},{Pos, [RevId|_]}=Path} <- couch_key_tree:get_all_leafs(Tree)]
     end,
     SortedRevInfosAndPath = lists:sort(
-            fun({#rev_info{deleted=DeletedA,rev=RevA}, _PathA},
-                {#rev_info{deleted=DeletedB,rev=RevB}, _PathB}) ->
-            % sort descending by {not deleted, rev}
-            {not DeletedA, RevA} > {not DeletedB, RevB}
+            fun({#rev_info{deleted=DeletedA,historical=HistoricalA,rev=RevA}, _PathA},
+                {#rev_info{deleted=DeletedB,historical=HistoricalB,rev=RevB}, _PathB}) ->
+            % sort descending by {not historical, not deleted, rev}
+            {not HistoricalA, not DeletedA, RevA} > {not HistoricalB, not DeletedB, RevB}
         end, RevInfosAndPath),
     [{_RevInfo, WinPath}|_] = SortedRevInfosAndPath,
     RevInfos = [RevInfo || {RevInfo, _Path} <- SortedRevInfosAndPath],
