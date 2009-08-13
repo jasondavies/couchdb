@@ -139,10 +139,6 @@ init([]) ->
         fun("couchdb", "database_dir") ->
             exit(Self, config_change)
         end),
-    %ok = couch_config:register(
-    %    fun("history") ->
-    %        exit(Self, config_change)
-    %    end),
     ok = couch_config:register(
         fun("couchdb", "max_dbs_open", Max) ->
             gen_server:call(couch_server,
