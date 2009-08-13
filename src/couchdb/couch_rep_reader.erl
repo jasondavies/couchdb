@@ -212,8 +212,7 @@ open_doc_revs(#http_db{} = DbS, DocId, Revs) ->
     [Transform(Result) || Result <- JsonResults].
 
 reader_loop(ReaderServer, Source, MissingRevsServer) ->
-    History = false, %couch_config:get("history", "dbname"),
-    OpenDocRevsOptions = if History -> []; true -> [latest] end,
+    OpenDocRevsOptions = if ?HISTORY_ENABLED -> []; true -> [latest] end,
     case couch_rep_missing_revs:next(MissingRevsServer) of
     complete ->
         % ?LOG_INFO("reader_loop terminating with complete", []),

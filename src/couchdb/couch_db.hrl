@@ -37,6 +37,8 @@
 -define(LOG_ERROR(Format, Args),
     error_logger:error_report(couch_error, {Format, Args})).
 
+-define(HISTORY_ENABLED, false).
+
 
 -record(rev_info,
     {

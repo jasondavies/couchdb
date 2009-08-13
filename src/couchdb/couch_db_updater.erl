@@ -201,12 +201,11 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 btree_by_seq_split(#doc_info{id=Id, high_seq=KeySeq, revs=Revs}) ->
-    History = false,
     RevInfos = [{Rev, Seq, Bp} ||
         #rev_info{rev=Rev,seq=Seq,historical=false,deleted=false,body_sp=Bp} <- Revs],
     DeletedRevInfos = [{Rev, Seq, Bp} ||
         #rev_info{rev=Rev,seq=Seq,historical=false,deleted=true,body_sp=Bp} <- Revs],
-    HistoryRevInfos = if History -> [{Rev, Seq, Bp} ||
+    HistoryRevInfos = if ?HISTORY_ENABLED -> [{Rev, Seq, Bp} ||
         #rev_info{rev=Rev,seq=Seq,historical=true,body_sp=Bp} <- Revs];
         true -> [] end,
     {KeySeq,{Id, RevInfos, DeletedRevInfos, HistoryRevInfos}}.
@@ -666,13 +665,12 @@ copy_doc_attachments(#db{fd=SrcFd}=SrcDb, {Pos,_RevId}, SrcSp, DestFd) ->
     {BodyData, NewBinInfos}.
 
 copy_rev_tree_attachments(SrcDb, DestFd, Tree) ->
-    History = false,
     couch_key_tree:map(
         fun(Rev, {IsDel, Sp, Seq}, leaf) ->
             DocBody = copy_doc_attachments(SrcDb, Rev, Sp, DestFd),
             {IsDel, DocBody, Seq};
         (Rev, {IsDel, Sp, Seq}, branch) ->
-            if History ->
+            if ?HISTORY_ENABLED ->
                 DocBody = copy_doc_attachments(SrcDb, Rev, Sp, DestFd),
                 {IsDel, DocBody, Seq};
             true -> ?REV_MISSING end
@@ -691,14 +689,13 @@ copy_docs(Db, #db{fd=DestFd}=NewDb, InfoBySeq, Retry) ->
     % write out the docs
     % we do this in 2 stages so the docs are written out contiguously, making
     % view indexing and replication faster.
-    History = false,
     RevTreeMapFun = fun(_Key, {IsDel, DocBody, Seq}) ->
         {ok, Pos} = couch_file:append_term_md5(DestFd, DocBody),
         {IsDel, Pos, Seq}
     end,
     NewFullDocInfos1 = lists:map(
         fun(#full_doc_info{rev_tree=RevTree}=Info) ->
-            Info#full_doc_info{rev_tree=if History -> couch_key_tree:map(RevTreeMapFun, RevTree);
+            Info#full_doc_info{rev_tree=if ?HISTORY_ENABLED -> couch_key_tree:map(RevTreeMapFun, RevTree);
                 true -> couch_key_tree:map_leafs(RevTreeMapFun, RevTree) end}
         end, NewFullDocInfos0),
 
