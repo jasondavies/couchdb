@@ -667,15 +667,22 @@ copy_doc_attachments(#db{fd=SrcFd}=SrcDb, {Pos,_RevId}, SrcSp, DestFd) ->
 
 copy_rev_tree_attachments(SrcDb, DestFd, HistoryEnabled, Tree) ->
     couch_key_tree:map(
-        fun(Rev, {IsDel, Sp, Seq}, leaf) ->
+        fun(Rev, {IsDel, Sp, Seq}, leaf, _) ->
             DocBody = copy_doc_attachments(SrcDb, Rev, Sp, DestFd),
             {IsDel, DocBody, Seq};
-        (Rev, {IsDel, Sp, Seq}, branch) ->
+        (Rev, {IsDel, Sp, Seq}, branch, SubTree) ->
             if HistoryEnabled ->
-                DocBody = copy_doc_attachments(SrcDb, Rev, Sp, DestFd),
-                {IsDel, DocBody, Seq};
+                % does this branch have any double-deleted leafs?
+                ReallyDeleteLeafs = [1 || {_, {true, _, _}, [{_, {true, _, _}, []}]} <- SubTree],
+                case length(ReallyDeleteLeafs) of
+                1 ->
+                    ?REV_MISSING;
+                _ ->
+                    DocBody = copy_doc_attachments(SrcDb, Rev, Sp, DestFd),
+                    {IsDel, DocBody, Seq}
+                end;
             true -> ?REV_MISSING end;
-        (_, _, branch) ->
+        (_, _, branch, _) ->
             ?REV_MISSING
         end, Tree).
 
@@ -695,7 +702,8 @@ copy_docs(Db, #db{fd=DestFd,name=DestDbName}=NewDb, InfoBySeq, Retry) ->
     % view indexing and replication faster.
     RevTreeMapFun = fun(_Key, {IsDel, DocBody, Seq}) ->
         {ok, Pos} = couch_file:append_term_md5(DestFd, DocBody),
-        {IsDel, Pos, Seq}
+        {IsDel, Pos, Seq};
+        (_Key, ?REV_MISSING) -> ?REV_MISSING
     end,
     NewFullDocInfos1 = lists:map(
         fun(#full_doc_info{rev_tree=RevTree}=Info) ->

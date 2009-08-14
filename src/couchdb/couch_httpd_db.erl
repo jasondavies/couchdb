@@ -773,8 +773,9 @@ update_doc_result_to_json(DocId, Error) ->
 update_doc(Req, Db, DocId, Json) ->
     update_doc(Req, Db, DocId, Json, []).
 
-update_doc(Req, Db, DocId, Json, Headers) ->
+update_doc(Req, #db{name=DbName}=Db, DocId, Json, Headers) ->
     #doc{deleted=Deleted} = Doc = couch_doc_from_req(Req, DocId, Json),
+    HistoryEnabled = ?HISTORY_ENABLED(DbName),
 
     Options = case couch_httpd:header_value(Req, "X-Couch-Full-Commit", "false") of
     "true" ->
@@ -783,13 +784,22 @@ update_doc(Req, Db, DocId, Json, Headers) ->
         []
     end ++
     case couch_httpd:qs_value(Req, "forget") of
-    "true" ->
+    "true" when HistoryEnabled andalso Deleted ->
         % ?forget=true allows any revision to be permanently deleted
         [merge_conflicts];
     _ ->
         []
     end,
-    {ok, NewRev} = couch_db:update_doc(Db, Doc, Options),
+    {ok, NewRev0} = couch_db:update_doc(Db, Doc, Options),
+    NewRev = case couch_httpd:qs_value(Req, "forget") of
+    "true" when HistoryEnabled andalso Deleted ->
+        % create another deleted leaf to permanently delete on compaction
+        {Pos0, Rev0} = NewRev0,
+        {ok, NewRev1} = couch_db:update_doc(Db, Doc#doc{revs={Pos0, [Rev0]}}, Options),
+        NewRev1;
+    _ ->
+        NewRev0
+    end,
     NewRevStr = couch_doc:rev_to_str(NewRev),
     ResponseHeaders = [{"Etag", <<"\"", NewRevStr/binary, "\"">>}] ++ Headers,
     send_json(Req, if Deleted -> 200; true -> 201 end,

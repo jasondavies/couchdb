@@ -297,9 +297,12 @@ map(_Fun, []) ->
 map(Fun, [{Pos, Tree}|Rest]) ->
     case erlang:fun_info(Fun, arity) of
     {arity, 2} ->
-        [NewTree] = map_simple(fun(A,B,_C) -> Fun(A,B) end, Pos, [Tree]),
+        [NewTree] = map_simple(fun(A,B,_C,_D) -> Fun(A,B) end, Pos, [Tree]),
         [{Pos, NewTree} | map(Fun, Rest)];
     {arity, 3} ->
+        [NewTree] = map_simple(fun(A,B,C,_D) -> Fun(A,B,C) end, Pos, [Tree]),
+        [{Pos, NewTree} | map(Fun, Rest)];
+    {arity, 4} ->
         [NewTree] = map_simple(Fun, Pos, [Tree]),
         [{Pos, NewTree} | map(Fun, Rest)]
     end.
@@ -308,7 +311,8 @@ map_simple(_Fun, _Pos, []) ->
     [];
 map_simple(Fun, Pos, [{Key, Value, SubTree} | RestTree]) ->
     Value2 = Fun({Pos, Key}, Value, 
-            if SubTree == [] -> leaf; true -> branch end),
+            if SubTree == [] -> leaf; true -> branch end,
+            SubTree),
     [{Key, Value2, map_simple(Fun, Pos + 1, SubTree)} | map_simple(Fun, Pos, RestTree)].
 
 
