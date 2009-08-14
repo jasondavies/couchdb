@@ -674,7 +674,9 @@ copy_rev_tree_attachments(SrcDb, DestFd, HistoryEnabled, Tree) ->
             if HistoryEnabled ->
                 DocBody = copy_doc_attachments(SrcDb, Rev, Sp, DestFd),
                 {IsDel, DocBody, Seq};
-            true -> ?REV_MISSING end
+            true -> ?REV_MISSING end;
+        (_, _, branch) ->
+            ?REV_MISSING
         end, Tree).
 
 

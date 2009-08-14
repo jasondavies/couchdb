@@ -12,18 +12,13 @@
 
 // Do some basic tests.
 couchTests.history = function(debug) {
+  var db = new CouchDB("test_suite_db");
+  db.deleteDb();
+  db.createDb();
+
+  var historyDoc = {};
+
   var testFun = function() {
-    var result = JSON.parse(CouchDB.request("GET", "/").responseText);
-    T(result.couchdb == "Welcome");
-
-    var db = new CouchDB("test_suite_db");
-    db.deleteDb();
-
-    // bug COUCHDB-100: DELETE on non-existent DB returns 500 instead of 404
-    db.deleteDb();
-
-    db.createDb();
-
     // PUT on existing DB should return 412 instead of 500
     xhr = CouchDB.request("PUT", "/test_suite_db/");
     T(xhr.status == 412);
@@ -228,19 +223,34 @@ couchTests.history = function(debug) {
     T(result.reason == "`keys` member must be a array.");
 
     // Test that compaction doesn't remove old revs
-    var doc = {};
-    T(db.save(doc).ok);
-    var firstRev = doc._rev;
-    T(db.save(doc).ok);
+    T(db.save(historyDoc).ok);
+    var firstRev = historyDoc._rev;
+    T(db.save(historyDoc).ok);
     T(db.compact().ok);
     T(db.last_req.status == 202);
     // compaction isn't instantaneous, loop until done
     while (db.info().compact_running) {};
-    T(db.open(doc._id, {rev: firstRev})._rev == firstRev);
+    T(db.open(historyDoc._id, {rev: firstRev})._rev == firstRev);
   }
   run_on_modified_server(
     [{section: "history",
       key: "test_suite_db", value: 'true'}],
     testFun
   );
+
+  // Run with history off
+
+  // Test that compaction works twice on deleted docs
+  T(db.compact().ok);
+  T(db.last_req.status == 202);
+  // compaction isn't instantaneous, loop until done
+  while (db.info().compact_running) {};
+
+  var oldRev = historyDoc._rev;
+  T(db.save(historyDoc).ok);
+  T(db.compact().ok);
+  T(db.last_req.status == 202);
+  // compaction isn't instantaneous, loop until done
+  while (db.info().compact_running) {};
+  T(db.open(historyDoc._id, {rev: oldRev}) == null)
 };
