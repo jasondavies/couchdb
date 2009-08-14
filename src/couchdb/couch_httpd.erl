@@ -15,11 +15,12 @@
 
 -export([start_link/0, stop/0, handle_request/5]).
 
--export([header_value/2,header_value/3,qs_value/2,qs_value/3,qs/1,path/1,absolute_uri/2]).
+-export([header_value/2,header_value/3,qs_value/2,qs_value/3,qs/1,path/1,absolute_uri/2,body_length/1]).
 -export([verify_is_server_admin/1,unquote/1,quote/1,recv/2,recv_chunked/4,error_info/1]).
 -export([parse_form/1,json_body/1,json_body_obj/1,body/1,doc_etag/1, make_etag/1, etag_respond/3]).
 -export([primary_header_value/2,partition/1,serve_file/3, server_header/0]).
 -export([start_chunked_response/3,send_chunk/2]).
+-export([start_response_length/4, send/2]).
 -export([start_json_response/2, start_json_response/3, end_json_response/1]).
 -export([send_response/4,send_method_not_allowed/2,send_error/4, send_redirect/2,send_chunked_error/2]).
 -export([send_json/2,send_json/3,send_json/4]).
@@ -280,6 +281,17 @@ recv_chunked(#httpd{mochi_req=MochiReq}, MaxChunkSize, ChunkFun, InitState) ->
     % Fun({Length, Binary}, State)
     % called with Length == 0 on the last time.
     MochiReq:stream_body(MaxChunkSize, ChunkFun, InitState).
+    
+body_length(Req) ->
+    case header_value(Req, "Transfer-Encoding") of
+        undefined ->
+            case header_value(Req, "Content-Length") of
+                undefined -> undefined;
+                Length -> list_to_integer(Length)
+            end;
+        "chunked" -> chunked;
+        Unknown -> {unknown_transfer_encoding, Unknown}
+    end.
 
 body(#httpd{mochi_req=MochiReq, req_body=ReqBody}) ->
     case ReqBody of
@@ -334,7 +346,13 @@ verify_is_server_admin(#httpd{user_ctx=#user_ctx{roles=Roles}}) ->
     false -> throw({unauthorized, <<"You are not a server admin.">>})
     end.
 
+start_response_length(#httpd{mochi_req=MochiReq}=Req, Code, Headers, Length) ->
+    couch_stats_collector:increment({httpd_status_codes, Code}),
+    {ok, MochiReq:start_response_length({Code, Headers ++ server_header() ++ couch_httpd_auth:cookie_auth_header(Req, Headers), Length})}.
 
+send(Resp, Data) ->
+    Resp:send(Data),
+    {ok, Resp}.
 
 start_chunked_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers) ->
     couch_stats_collector:increment({httpd_status_codes, Code}),
