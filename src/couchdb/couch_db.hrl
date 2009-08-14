@@ -38,7 +38,7 @@
     error_logger:error_report(couch_error, {Format, Args})).
 
 -define(HISTORY_ENABLED(DbName),
-    case couch_config:get("history", DbName, "false") of
+    case couch_config:get("history", ?b2l(DbName), "false") of
         "true" -> true;
         _Else -> false
     end).

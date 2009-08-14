@@ -226,6 +226,17 @@ couchTests.history = function(debug) {
     result = JSON.parse(xhr.responseText);
     T(result.error == "bad_request");
     T(result.reason == "`keys` member must be a array.");
+
+    // Test that compaction doesn't remove old revs
+    var doc = {};
+    T(db.save(doc).ok);
+    var firstRev = doc._rev;
+    T(db.save(doc).ok);
+    T(db.compact().ok);
+    T(db.last_req.status == 202);
+    // compaction isn't instantaneous, loop until done
+    while (db.info().compact_running) {};
+    T(db.open(doc._id, {rev: firstRev})._rev == firstRev);
   }
   run_on_modified_server(
     [{section: "history",
