@@ -313,9 +313,11 @@ db_req(#httpd{method='POST',path_parts=[_,<<"_bulk_docs">>]}=Req, Db) ->
     couch_stats_collector:increment({httpd, bulk_requests}),
     {JsonProps} = couch_httpd:json_body_obj(Req),
     DocsArray = proplists:get_value(<<"docs">>, JsonProps),
-    case couch_httpd:header_value(Req, "X-Couch-Full-Commit", "false") of
+    case couch_httpd:header_value(Req, "X-Couch-Full-Commit") of
     "true" ->
         Options = [full_commit];
+    "false" ->
+        Options = [delay_commit];
     _ ->
         Options = []
     end,
@@ -500,8 +502,8 @@ db_req(#httpd{path_parts=[_,<<"_revs_limit">>]}=Req, _Db) ->
 % as slashes in document IDs must otherwise be URL encoded.
 db_req(#httpd{method='GET',mochi_req=MochiReq, path_parts=[DbName,<<"_design/",_/binary>>|_]}=Req, _Db) ->
     PathFront = "/" ++ couch_httpd:quote(binary_to_list(DbName)) ++ "/",
-    RawSplit = regexp:split(MochiReq:get(raw_path),"_design%2F"),
-    {ok, [PathFront|PathTail]} = RawSplit,
+    [PathFront|PathTail] = re:split(MochiReq:get(raw_path), "_design%2F",
+        [{return, list}]),
     couch_httpd:send_redirect(Req, PathFront ++ "_design/" ++
         mochiweb_util:join(PathTail, "_design%2F"));
 
@@ -777,9 +779,11 @@ update_doc(Req, #db{name=DbName}=Db, DocId, Json, Headers) ->
     #doc{deleted=Deleted} = Doc = couch_doc_from_req(Req, DocId, Json),
     HistoryEnabled = ?HISTORY_ENABLED(DbName),
 
-    Options = case couch_httpd:header_value(Req, "X-Couch-Full-Commit", "false") of
+    Options = case couch_httpd:header_value(Req, "X-Couch-Full-Commit") of
     "true" ->
         [full_commit];
+    "false" ->
+        [delay_commit];
     _ ->
         []
     end ++
@@ -1027,12 +1031,12 @@ extract_header_rev(Req, ExplicitRev) ->
 
 parse_copy_destination_header(Req) ->
     Destination = couch_httpd:header_value(Req, "Destination"),
-    case regexp:match(Destination, "\\?") of
+    case re:run(Destination, "\\?", [{capture, none}]) of
     nomatch ->
         {list_to_binary(Destination), {0, []}};
-    {match, _, _} ->
-        {ok, [DocId, RevQueryOptions]} = regexp:split(Destination, "\\?"),
-        {ok, [_RevQueryKey, Rev]} = regexp:split(RevQueryOptions, "="),
+    match ->
+        [DocId, RevQs] = re:split(Destination, "\\?", [{return, list}]),
+        [_RevQueryKey, Rev] = re:split(RevQs, "=", [{return, list}]),
         {Pos, RevId} = couch_doc:parse_rev(Rev),
         {list_to_binary(DocId), {Pos, [RevId]}}
     end.
