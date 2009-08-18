@@ -782,7 +782,7 @@ update_doc(Req, Db, DocId, Json) ->
     update_doc(Req, Db, DocId, Json, []).
 
 update_doc(Req, #db{name=DbName}=Db, DocId, Json, Headers) ->
-    #doc{deleted=Deleted} = Doc = couch_doc_from_req(Req, DocId, Json),
+    #doc{deleted=Deleted, body={Body}} = Doc = couch_doc_from_req(Req, DocId, Json),
     HistoryEnabled = ?HISTORY_ENABLED(DbName),
 
     Options = case couch_httpd:header_value(Req, "X-Couch-Full-Commit") of
@@ -805,7 +805,9 @@ update_doc(Req, #db{name=DbName}=Db, DocId, Json, Headers) ->
     "true" when HistoryEnabled andalso Deleted ->
         % create another deleted leaf to permanently delete on compaction
         {Pos0, Rev0} = NewRev0,
-        {ok, NewRev1} = couch_db:update_doc(Db, Doc#doc{revs={Pos0, [Rev0]}}, Options),
+        ?LOG_DEBUG("BODY ~p, NEWREV0 ~p", [Body, NewRev0]),
+        Body0 = {[{<<"_forget">>, true}|Body]},
+        {ok, NewRev1} = couch_db:update_doc(Db, Doc#doc{revs={Pos0, [Rev0]}, body=Body0}, Options),
         NewRev1;
     _ ->
         NewRev0

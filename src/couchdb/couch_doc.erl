@@ -25,8 +25,11 @@ to_json_rev(0, []) ->
 to_json_rev(Start, [FirstRevId|_]) ->
     [{<<"_rev">>, ?l2b([integer_to_list(Start),"-",revid_to_str(FirstRevId)])}].
 
-to_json_body(true, _Body) ->
-    [{<<"_deleted">>, true}];
+to_json_body(true, {Body}) ->
+    [{<<"_deleted">>, true}] ++ case proplists:get_value(<<"_forget">>, Body, false) of
+        true -> [{<<"_forget">>, true}];
+        _ -> []
+    end;
 to_json_body(false, {Body}) ->
     Body.
 
@@ -226,6 +229,8 @@ transfer_fields([{<<"_revisions">>, {Props}} | Rest], Doc) ->
 
 transfer_fields([{<<"_deleted">>, B} | Rest], Doc) when (B==true) or (B==false) ->
     transfer_fields(Rest, Doc#doc{deleted=B});
+transfer_fields([{<<"_forget">>, B}=Field | Rest], #doc{body=Fields}=Doc) when (B==true) or (B==false) ->
+    transfer_fields(Rest, Doc#doc{body=[Field|Fields]});
 
 % ignored fields
 transfer_fields([{<<"_revs_info">>, _} | Rest], Doc) ->
