@@ -395,13 +395,17 @@ prep_and_validate_replicated_updates(Db, [Bucket|RestBuckets], [OldInfo|RestOldI
             {[], AccErrors}, Bucket),
         prep_and_validate_replicated_updates(Db, RestBuckets, RestOldInfo, [ValidatedBucket | AccPrepped], AccErrors3);
     {ok, #full_doc_info{rev_tree=OldTree}} ->
+        ?LOG_DEBUG("OLD TREE ~p", [OldTree]),
+        ?LOG_DEBUG("BUCKET ~p", [Bucket]),
         NewRevTree = lists:foldl(
             fun(NewDoc, AccTree) ->
+                ?LOG_DEBUG("DOC_TO_TREE ~p", [couch_db:doc_to_tree(NewDoc)]),
                 {NewTree, _} = couch_key_tree:merge(AccTree, [couch_db:doc_to_tree(NewDoc)]),
                 NewTree
             end,
             OldTree, Bucket),
         Leafs = couch_key_tree:get_all_leafs_full(NewRevTree),
+        ?LOG_DEBUG("LEAFS ~p", [Leafs]),
         LeafRevsFullDict = dict:from_list( [{{Start, RevId}, FullPath} || {Start, [{RevId, _}|_]}=FullPath <- Leafs]),
         {ValidatedBucket, AccErrors3} =
         lists:foldl(
@@ -410,8 +414,12 @@ prep_and_validate_replicated_updates(Db, [Bucket|RestBuckets], [OldInfo|RestOldI
                 {ok, {Start, Path}} ->
                     % our unflushed doc is a leaf node. Go back on the path
                     % to find the previous rev that's on disk.
+                    Path0 = lists:map(fun ({Rev, #doc{}}) -> {Rev, ?REV_MISSING};
+                        (Else) -> Else
+                    end, Path),
+                    ?LOG_DEBUG("PATH ~p", [Path]),
                     LoadPrevRevFun = fun() ->
-                                make_first_doc_on_disk(Db,Id,Start-1, tl(Path))
+                                make_first_doc_on_disk(Db,Id,Start-1, tl(Path0))
                             end,
                     case validate_doc_update(Db, Doc, LoadPrevRevFun) of
                     ok ->
@@ -468,6 +476,7 @@ sort_and_check_atts(#doc{atts=Atts}=Doc) ->
 
 
 update_docs(Db, Docs, Options, replicated_changes) ->
+    ?LOG_DEBUG("UPDATE_DOCS ~p", [Docs]),
     couch_stats_collector:increment({couchdb, database_writes}),
     DocBuckets = group_alike_docs(Docs),
 
