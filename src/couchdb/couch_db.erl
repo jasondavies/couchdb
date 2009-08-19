@@ -399,7 +399,6 @@ prep_and_validate_replicated_updates(Db, [Bucket|RestBuckets], [OldInfo|RestOldI
         ?LOG_DEBUG("BUCKET ~p", [Bucket]),
         NewRevTree = lists:foldl(
             fun(NewDoc, AccTree) ->
-                ?LOG_DEBUG("DOC_TO_TREE ~p", [couch_db:doc_to_tree(NewDoc)]),
                 {NewTree, _} = couch_key_tree:merge(AccTree, [couch_db:doc_to_tree(NewDoc)]),
                 NewTree
             end,
@@ -476,7 +475,6 @@ sort_and_check_atts(#doc{atts=Atts}=Doc) ->
 
 
 update_docs(Db, Docs, Options, replicated_changes) ->
-    ?LOG_DEBUG("UPDATE_DOCS ~p", [Docs]),
     couch_stats_collector:increment({couchdb, database_writes}),
     DocBuckets = group_alike_docs(Docs),
 
@@ -491,15 +489,13 @@ update_docs(Db, Docs, Options, replicated_changes) ->
 
         {DocBuckets2, DocErrors} =
                 prep_and_validate_replicated_updates(Db, DocBuckets, ExistingDocs, [], []),
-        DocBuckets3 = [lists:reverse(Bucket) || [_|_]=Bucket <- DocBuckets2], % remove empty buckets TODO lists:reverse needed?
-        ?LOG_DEBUG("DOC BUCKETS PREPPED ~p, DOCK BUCKETS ~p", [DocBuckets3, DocBuckets]);
+        DocBuckets3 = [lists:reverse(Bucket) || [_|_]=Bucket <- DocBuckets2]; % remove empty buckets TODO lists:reverse really needed?
     false ->
         DocErrors = [],
         DocBuckets3 = DocBuckets
     end,
     DocBuckets4 = [[doc_flush_atts(sort_and_check_atts(Doc), Db#db.fd)
             || Doc <- Bucket] || Bucket <- DocBuckets3],
-    ?LOG_DEBUG("FLUSHED DOC BUCKETS ~p",[DocBuckets4]),
     {ok, []} = write_and_commit(Db, DocBuckets4, [], [merge_conflicts | Options]),
     {ok, DocErrors};
 
@@ -534,7 +530,6 @@ update_docs(Db, Docs, Options, interactive_edit) ->
 
         {DocBucketsPrepped, PreCommitFailures} = prep_and_validate_updates(Db,
                 DocBuckets, ExistingDocInfos, AllOrNothing, [], []),
-        ?LOG_DEBUG("DOC BUCKETS PREPPED ~p, DOCK BUCKETS ~p, ALL OR NOTHING ~p", [DocBucketsPrepped, DocBuckets, AllOrNothing]),
 
         % strip out any empty buckets
         DocBuckets2 = [Bucket || [_|_] = Bucket <- DocBucketsPrepped];

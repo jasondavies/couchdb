@@ -523,7 +523,6 @@ update_docs_int(Db, DocsList, NonRepDocs, Options) ->
     {ok, NewDocInfos0, RemoveSeqs0, Conflicts, NewSeq} = merge_rev_trees(
             lists:member(merge_conflicts, Options),
             DocsList, OldDocInfos, [], [], [], LastSeq),
-    ?LOG_DEBUG("MERGED DOCS ~p DOCS LIST ~p",[{ok, NewDocInfos0, RemoveSeqs0, Conflicts, NewSeq}, DocsList]),
 
     NewFullDocInfos = stem_full_doc_infos(Db, NewDocInfos0),
 

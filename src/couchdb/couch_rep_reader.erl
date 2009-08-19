@@ -228,7 +228,6 @@ reader_loop(ReaderServer, Source, MissingRevsServer) ->
             HistoryEnabled = ?HISTORY_ENABLED(DbName),
             OpenDocRevsOptions = if HistoryEnabled -> []; true -> [latest] end,
             lists:foreach(fun({Id,Revs}) ->
-                        ?LOG_DEBUG("OPENING DOC REVS ~p: ~p", [Id, Revs]),
                 {ok, Docs} = couch_db:open_doc_revs(Source, Id, Revs, OpenDocRevsOptions),
                 JustTheDocs = [Doc || {ok, Doc} <- Docs],
                 gen_server:call(ReaderServer, {add_docs, JustTheDocs})

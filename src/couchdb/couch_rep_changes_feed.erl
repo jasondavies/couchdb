@@ -321,7 +321,7 @@ send_local_changes_forever(Server, Db, Since) ->
     {ok, NewDb} = couch_db:open(DbName, [{user_ctx, UserCtx}]),
     send_local_changes_forever(Server, NewDb, NewSeq).
 
-send_local_changes_once(Server, #db{name=DbName}=Db, Since) ->
+send_local_changes_once(Server, Db, Since) ->
     FilterFun = fun(#doc_info{revs=[#rev_info{rev=Rev}|_]}) ->
         {[{<<"rev">>, Rev}]}
     end,
