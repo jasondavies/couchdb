@@ -12,11 +12,18 @@
 
 // Do some tests on history (preservation of old revisions).
 couchTests.history = function(debug) {
-  var db = new CouchDB("test_suite_db");
+  var db = new CouchDB("test_suite_db", {"X-Couch-Full-Commit":"false"});
+  var dbB = new CouchDB("test_suite_db_b", {"X-Couch-Full-Commit":"false"});
   db.deleteDb();
   db.createDb();
+  dbB.deleteDb();
+  dbB.createDb();
 
   var historyDoc = {_id: "historyDoc"};
+  var dbPair = {
+    source:"test_suite_db",
+    target:"test_suite_db_b"
+  };
 
   var testFun = function() {
     // Test that compaction doesn't normally remove old revs
@@ -34,10 +41,19 @@ couchTests.history = function(debug) {
     while (db.info().compact_running) {};
     T(db.open(historyDoc._id, {rev: firstRev})._rev == firstRev);
     T(db.open(historyDoc._id, {rev: secondRev}) == null);
+
+    // Replication
+    var A = dbPair.source;
+    var B = dbPair.target;
+    var result = CouchDB.replicate(A, B);
+    T(dbB.open(historyDoc._id, {rev: firstRev})._rev == firstRev);
+    T(dbB.open(historyDoc._id, {rev: secondRev}) == null);
   }
   run_on_modified_server(
     [{section: "history",
-      key: "test_suite_db", value: 'true'}],
+      key: "test_suite_db", value: 'true'},
+     {section: "history",
+      key: "test_suite_db_b", value: 'true'}],
     testFun
   );
 
