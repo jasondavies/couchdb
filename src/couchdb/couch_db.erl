@@ -395,8 +395,6 @@ prep_and_validate_replicated_updates(Db, [Bucket|RestBuckets], [OldInfo|RestOldI
             {[], AccErrors}, Bucket),
         prep_and_validate_replicated_updates(Db, RestBuckets, RestOldInfo, [ValidatedBucket | AccPrepped], AccErrors3);
     {ok, #full_doc_info{rev_tree=OldTree}} ->
-        ?LOG_DEBUG("OLD TREE ~p", [OldTree]),
-        ?LOG_DEBUG("BUCKET ~p", [Bucket]),
         NewRevTree = lists:foldl(
             fun(NewDoc, AccTree) ->
                 {NewTree, _} = couch_key_tree:merge(AccTree, [couch_db:doc_to_tree(NewDoc)]),
@@ -404,7 +402,6 @@ prep_and_validate_replicated_updates(Db, [Bucket|RestBuckets], [OldInfo|RestOldI
             end,
             OldTree, Bucket),
         Leafs = couch_key_tree:get_all_leafs_full(NewRevTree),
-        ?LOG_DEBUG("LEAFS ~p", [Leafs]),
         LeafRevsFullDict = dict:from_list( [{{Start, RevId}, FullPath} || {Start, [{RevId, _}|_]}=FullPath <- Leafs]),
         {ValidatedBucket, AccErrors3} =
         lists:foldl(
@@ -416,7 +413,6 @@ prep_and_validate_replicated_updates(Db, [Bucket|RestBuckets], [OldInfo|RestOldI
                     Path0 = lists:map(fun ({Rev, #doc{}}) -> {Rev, ?REV_MISSING};
                         (Else) -> Else
                     end, Path),
-                    ?LOG_DEBUG("PATH ~p", [Path]),
                     LoadPrevRevFun = fun() ->
                                 make_first_doc_on_disk(Db,Id,Start-1, tl(Path0))
                             end,

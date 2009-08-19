@@ -677,7 +677,6 @@ copy_rev_tree_attachments(SrcDb, DestFd, HistoryEnabled, Tree) ->
         (Rev, {IsDel, Sp, Seq}, branch, SubTree) ->
             if HistoryEnabled ->
                 % does this branch have any double-deleted leafs?
-                ?LOG_DEBUG("CHECKING FOR DOUBLE DELETED LEAFS",[]),
                 ReallyDeleteLeafs = [1 || {_, {true, _, _}, [{_, {true, _, _}, []}]} <- SubTree],
                 case length(ReallyDeleteLeafs) of
                 1 ->

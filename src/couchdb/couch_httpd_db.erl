@@ -828,7 +828,6 @@ update_doc(Req, #db{name=DbName}=Db, DocId, Json, Headers) ->
     "true" when HistoryEnabled andalso Deleted ->
         % create another deleted leaf to permanently delete on compaction
         {Pos0, Rev0} = NewRev0,
-        ?LOG_DEBUG("BODY ~p, NEWREV0 ~p", [Body, NewRev0]),
         Body0 = {[{<<"_forget">>, true}|Body]},
         {ok, NewRev1} = couch_db:update_doc(Db, Doc#doc{revs={Pos0, [Rev0]}, body=Body0}, Options),
         NewRev1;
