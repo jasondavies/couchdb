@@ -491,13 +491,15 @@ update_docs(Db, Docs, Options, replicated_changes) ->
 
         {DocBuckets2, DocErrors} =
                 prep_and_validate_replicated_updates(Db, DocBuckets, ExistingDocs, [], []),
-        DocBuckets3 = [Bucket || [_|_]=Bucket <- DocBuckets2]; % remove empty buckets
+        DocBuckets3 = [lists:reverse(Bucket) || [_|_]=Bucket <- DocBuckets2], % remove empty buckets
+        ?LOG_DEBUG("DOC BUCKETS PREPPED ~p, DOCK BUCKETS ~p", [DocBuckets3, DocBuckets]);
     false ->
         DocErrors = [],
         DocBuckets3 = DocBuckets
     end,
     DocBuckets4 = [[doc_flush_atts(sort_and_check_atts(Doc), Db#db.fd)
             || Doc <- Bucket] || Bucket <- DocBuckets3],
+    ?LOG_DEBUG("FLUSHED DOC BUCKETS ~p",[DocBuckets4]),
     {ok, []} = write_and_commit(Db, DocBuckets4, [], [merge_conflicts | Options]),
     {ok, DocErrors};
 
@@ -532,6 +534,7 @@ update_docs(Db, Docs, Options, interactive_edit) ->
 
         {DocBucketsPrepped, PreCommitFailures} = prep_and_validate_updates(Db,
                 DocBuckets, ExistingDocInfos, AllOrNothing, [], []),
+        ?LOG_DEBUG("DOC BUCKETS PREPPED ~p, DOCK BUCKETS ~p, ALL OR NOTHING ~p", [DocBucketsPrepped, DocBuckets, AllOrNothing]),
 
         % strip out any empty buckets
         DocBuckets2 = [Bucket || [_|_] = Bucket <- DocBucketsPrepped];

@@ -26,7 +26,7 @@ couchTests.history = function(debug) {
   };
 
   var testFun = function() {
-    // Test that compaction doesn't normally remove old revs
+    // Set up some revs
     T(db.save(historyDoc).ok);
     var firstRev = historyDoc._rev;
     T(db.save(historyDoc).ok);
@@ -35,26 +35,13 @@ couchTests.history = function(debug) {
     // Forget the second rev
     historyDoc._rev = secondRev;
     T(db.deleteDoc(historyDoc, true).ok);
-    T(db.compact().ok);
-    T(db.last_req.status == 202);
-    // compaction isn't instantaneous, loop until done
-    while (db.info().compact_running) {};
-    T(db.open(historyDoc._id, {rev: firstRev})._rev == firstRev);
-    T(db.open(historyDoc._id, {rev: secondRev}) == null);
-
-    // Replication
-    var A = dbPair.source;
-    var B = dbPair.target;
-    var result = CouchDB.replicate(A, B);
-    T(dbB.open(historyDoc._id, {rev: firstRev})._rev == firstRev);
-    T(dbB.open(historyDoc._id, {rev: secondRev}) == null);
 
     // Replication with validation to prevent "forgotten" revs getting through.
-    dbB.deleteDb();
-    dbB.createDb();
+    var A = dbPair.source;
+    var B = dbPair.target;
     T(dbB.save({
       _id: '_design/forgetmenot',
-      validate_doc_update: 'function (newDoc, oldDoc, userCtx) { if (newDoc._forget) throw {unauthorized: "I cannot forget."}; }'
+      validate_doc_update: 'function (newDoc, oldDoc, userCtx) { if (newDoc._forget) { log("found _forget"); throw {unauthorized: "I cannot forget."}; } }'
     }).ok);
     var result = CouchDB.replicate(A, B);
     T(result.ok);
@@ -62,6 +49,20 @@ couchTests.history = function(debug) {
     T(dbB.open(historyDoc._id, {rev: firstRev})._rev == firstRev);
     T(dbB.open(historyDoc._id, {rev: secondRev})._rev == secondRev);
 
+    // Check that compaction removes the "forgotten" rev
+    T(db.compact().ok);
+    T(db.last_req.status == 202);
+    // compaction isn't instantaneous, loop until done
+    while (db.info().compact_running) {};
+    T(db.open(historyDoc._id, {rev: firstRev})._rev == firstRev);
+    T(db.open(historyDoc._id, {rev: secondRev}) == null);
+
+    // Check that the "forgotten" rev doesn't get replicated
+    dbB.deleteDb();
+    dbB.createDb();
+    var result = CouchDB.replicate(A, B);
+    T(dbB.open(historyDoc._id, {rev: firstRev})._rev == firstRev);
+    T(dbB.open(historyDoc._id, {rev: secondRev}) == null);
   }
   run_on_modified_server(
     [{section: "history",

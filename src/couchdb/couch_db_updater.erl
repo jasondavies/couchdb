@@ -507,7 +507,7 @@ update_docs_int(Db, DocsList, NonRepDocs, Options) ->
         update_seq = LastSeq
         } = Db,
     Ids = [Id || [#doc{id=Id}|_] <- DocsList],
-    % lookup up the old documents, if they exist.
+    % look up the old documents, if they exist.
     OldDocLookups = couch_btree:lookup(DocInfoByIdBTree, Ids),
     OldDocInfos = lists:zipwith(
         fun(_Id, {ok, FullDocInfo}) ->
@@ -521,6 +521,7 @@ update_docs_int(Db, DocsList, NonRepDocs, Options) ->
     {ok, NewDocInfos0, RemoveSeqs, Conflicts, NewSeq} = merge_rev_trees(
             lists:member(merge_conflicts, Options),
             DocsList, OldDocInfos, [], [], [], LastSeq),
+    ?LOG_DEBUG("MERGED DOCS ~p DOCS LIST ~p",[{ok, NewDocInfos0, RemoveSeqs, Conflicts, NewSeq}, DocsList]),
 
     NewFullDocInfos = stem_full_doc_infos(Db, NewDocInfos0),
 
