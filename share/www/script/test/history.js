@@ -48,6 +48,20 @@ couchTests.history = function(debug) {
     var result = CouchDB.replicate(A, B);
     T(dbB.open(historyDoc._id, {rev: firstRev})._rev == firstRev);
     T(dbB.open(historyDoc._id, {rev: secondRev}) == null);
+
+    // Replication with validation to prevent "forgotten" revs getting through.
+    dbB.deleteDb();
+    dbB.createDb();
+    T(dbB.save({
+      _id: '_design/forgetmenot',
+      validate_doc_update: 'function (newDoc, oldDoc, userCtx) { if (newDoc._forget) throw {unauthorized: "I cannot forget."}; }'
+    }).ok);
+    var result = CouchDB.replicate(A, B);
+    T(result.ok);
+    T(result.history[0].doc_write_failures === 1);
+    T(dbB.open(historyDoc._id, {rev: firstRev})._rev == firstRev);
+    T(dbB.open(historyDoc._id, {rev: secondRev})._rev == secondRev);
+
   }
   run_on_modified_server(
     [{section: "history",
