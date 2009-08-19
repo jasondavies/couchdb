@@ -67,8 +67,10 @@ function CouchDB(name, httpHeaders) {
   }
 
   // Deletes a document from the database
-  this.deleteDoc = function(doc) {
-    this.last_req = this.request("DELETE", this.uri + encodeURIComponent(doc._id) + "?rev=" + doc._rev);
+  this.deleteDoc = function(doc, forget) {
+    var requestUri = this.uri + encodeURIComponent(doc._id) + "?rev=" + doc._rev;
+    if (forget) requestUri += "&forget=true";
+    this.last_req = this.request("DELETE", requestUri);
     CouchDB.maybeThrowError(this.last_req);
     var result = JSON.parse(this.last_req.responseText);
     doc._rev = result.rev; //record rev in input document

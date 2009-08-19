@@ -19,15 +19,21 @@ couchTests.history = function(debug) {
   var historyDoc = {_id: "historyDoc"};
 
   var testFun = function() {
-    // Test that compaction doesn't remove old revs
+    // Test that compaction doesn't normally remove old revs
     T(db.save(historyDoc).ok);
     var firstRev = historyDoc._rev;
     T(db.save(historyDoc).ok);
+    var secondRev = historyDoc._rev;
+    T(db.save(historyDoc).ok);
+    // Forget the second rev
+    historyDoc._rev = secondRev;
+    T(db.deleteDoc(historyDoc, true).ok);
     T(db.compact().ok);
     T(db.last_req.status == 202);
     // compaction isn't instantaneous, loop until done
     while (db.info().compact_running) {};
     T(db.open(historyDoc._id, {rev: firstRev})._rev == firstRev);
+    T(db.open(historyDoc._id, {rev: secondRev}) == null);
   }
   run_on_modified_server(
     [{section: "history",
