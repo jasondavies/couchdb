@@ -41,7 +41,7 @@ couchTests.history = function(debug) {
     var B = dbPair.target;
     T(dbB.save({
       _id: '_design/forgetmenot',
-      validate_doc_update: 'function (newDoc, oldDoc, userCtx) { if (newDoc._forget) { log("found _forget"); throw {unauthorized: "I cannot forget."}; } }'
+      validate_doc_update: 'function (newDoc, oldDoc, userCtx) { if (newDoc._forget) { throw {unauthorized: "I cannot forget."}; } }'
     }).ok);
     var result = CouchDB.replicate(A, B);
     T(result.ok);

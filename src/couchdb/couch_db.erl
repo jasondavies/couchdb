@@ -491,7 +491,7 @@ update_docs(Db, Docs, Options, replicated_changes) ->
 
         {DocBuckets2, DocErrors} =
                 prep_and_validate_replicated_updates(Db, DocBuckets, ExistingDocs, [], []),
-        DocBuckets3 = [lists:reverse(Bucket) || [_|_]=Bucket <- DocBuckets2], % remove empty buckets
+        DocBuckets3 = [lists:reverse(Bucket) || [_|_]=Bucket <- DocBuckets2], % remove empty buckets TODO lists:reverse needed?
         ?LOG_DEBUG("DOC BUCKETS PREPPED ~p, DOCK BUCKETS ~p", [DocBuckets3, DocBuckets]);
     false ->
         DocErrors = [],

@@ -321,15 +321,14 @@ send_local_changes_forever(Server, Db, Since) ->
     {ok, NewDb} = couch_db:open(DbName, [{user_ctx, UserCtx}]),
     send_local_changes_forever(Server, NewDb, NewSeq).
 
-send_local_changes_once(Server, Db, Since) ->
-    FilterFun =
-    fun(#doc_info{revs=[#rev_info{rev=Rev}|_]}) ->
+send_local_changes_once(Server, #db{name=DbName}=Db, Since) ->
+    FilterFun = fun(#doc_info{revs=[#rev_info{rev=Rev}|_]}) ->
         {[{<<"rev">>, Rev}]}
     end,
 
     ChangesFun =
     fun([#doc_info{id=Id, high_seq=Seq}|_]=DocInfos, _) ->
-        Results0 = [FilterFun(DocInfo) || DocInfo <- DocInfos],
+        Results0 = lists:map(FilterFun, DocInfos),
         Results = [Result || Result <- Results0, Result /= null],
         if Results /= [] ->
             Change = {[{<<"seq">>,Seq}, {<<"id">>,Id}, {<<"changes">>,Results}]},

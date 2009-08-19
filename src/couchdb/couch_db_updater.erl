@@ -502,10 +502,12 @@ stem_full_doc_infos(#db{revs_limit=Limit}, DocInfos) ->
 
 update_docs_int(Db, DocsList, NonRepDocs, Options) ->
     #db{
+        name = DbName,
         fulldocinfo_by_id_btree = DocInfoByIdBTree,
         docinfo_by_seq_btree = DocInfoBySeqBTree,
         update_seq = LastSeq
         } = Db,
+    HistoryEnabled = ?HISTORY_ENABLED(DbName),
     Ids = [Id || [#doc{id=Id}|_] <- DocsList],
     % look up the old documents, if they exist.
     OldDocLookups = couch_btree:lookup(DocInfoByIdBTree, Ids),
@@ -518,10 +520,10 @@ update_docs_int(Db, DocsList, NonRepDocs, Options) ->
         Ids, OldDocLookups),
 
     % Merge the new docs into the revision trees.
-    {ok, NewDocInfos0, RemoveSeqs, Conflicts, NewSeq} = merge_rev_trees(
+    {ok, NewDocInfos0, RemoveSeqs0, Conflicts, NewSeq} = merge_rev_trees(
             lists:member(merge_conflicts, Options),
             DocsList, OldDocInfos, [], [], [], LastSeq),
-    ?LOG_DEBUG("MERGED DOCS ~p DOCS LIST ~p",[{ok, NewDocInfos0, RemoveSeqs, Conflicts, NewSeq}, DocsList]),
+    ?LOG_DEBUG("MERGED DOCS ~p DOCS LIST ~p",[{ok, NewDocInfos0, RemoveSeqs0, Conflicts, NewSeq}, DocsList]),
 
     NewFullDocInfos = stem_full_doc_infos(Db, NewDocInfos0),
 
@@ -535,6 +537,8 @@ update_docs_int(Db, DocsList, NonRepDocs, Options) ->
 
     {IndexFullDocInfos, IndexDocInfos} =
             new_index_entries(FlushedFullDocInfos, [], []),
+
+    RemoveSeqs = if HistoryEnabled -> []; true -> RemoveSeqs0 end,
 
     % and the indexes
     {ok, DocInfoByIdBTree2} = couch_btree:add_remove(DocInfoByIdBTree, IndexFullDocInfos, []),
@@ -674,6 +678,7 @@ copy_rev_tree_attachments(SrcDb, DestFd, HistoryEnabled, Tree) ->
         (Rev, {IsDel, Sp, Seq}, branch, SubTree) ->
             if HistoryEnabled ->
                 % does this branch have any double-deleted leafs?
+                ?LOG_DEBUG("CHECKING FOR DOUBLE DELETED LEAFS",[]),
                 ReallyDeleteLeafs = [1 || {_, {true, _, _}, [{_, {true, _, _}, []}]} <- SubTree],
                 case length(ReallyDeleteLeafs) of
                 1 ->
