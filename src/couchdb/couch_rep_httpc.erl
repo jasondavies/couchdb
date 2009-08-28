@@ -56,20 +56,27 @@ do_request(Req) ->
     process_response(Resp, Req).
 
 db_exists(Req) ->
+    db_exists(Req, Req#http_db.url).
+
+db_exists(Req, CanonicalUrl) ->
     #http_db{
         url = Url,
         headers = Headers
     } = Req,
     case catch ibrowse:send_req(Url, Headers, head) of
     {ok, "200", _, _} ->
-        true;
-    {ok, "301", Headers, _} ->
-        MochiHeaders = mochiweb_headers:make(Headers),
+        Req#http_db{url = CanonicalUrl};
+    {ok, "301", RespHeaders, _} ->
+        MochiHeaders = mochiweb_headers:make(RespHeaders),
         RedirectUrl = mochiweb_headers:get_value("Location", MochiHeaders),
-        db_exists(Req#http_db{url = RedirectUrl});
+        db_exists(Req#http_db{url = RedirectUrl}, RedirectUrl);
+    {ok, "302", RespHeaders, _} ->
+        MochiHeaders = mochiweb_headers:make(RespHeaders),
+        RedirectUrl = mochiweb_headers:get_value("Location", MochiHeaders),
+        db_exists(Req#http_db{url = RedirectUrl}, CanonicalUrl);
     Error ->
         ?LOG_DEBUG("DB at ~s could not be found because ~p", [Url, Error]),
-        false
+        throw({db_not_found, ?l2b(Url)})
     end.
 
 full_url(#http_db{url=Url} = Req) when is_binary(Url) ->
@@ -92,7 +99,7 @@ process_response({ok, Status, Headers, Body}, Req) ->
     Code = list_to_integer(Status),
     if Code =:= 200; Code =:= 201 ->
         ?JSON_DECODE(maybe_decompress(Headers, Body));
-    Code =:= 301 ->
+    Code =:= 301; Code =:= 302 ->
         MochiHeaders = mochiweb_headers:make(Headers),
         RedirectUrl = mochiweb_headers:get_value("Location", MochiHeaders),
         do_request(Req#http_db{url = RedirectUrl});
@@ -100,14 +107,16 @@ process_response({ok, Status, Headers, Body}, Req) ->
         throw(conflict);
     Code >= 400, Code < 500 ->
         ?JSON_DECODE(maybe_decompress(Headers, Body));
-    Code =:= 500; Code =:= 502 ->
+    Code =:= 500; Code =:= 502; Code =:= 503 ->
         #http_db{pause = Pause, retries = Retries} = Req,
         ?LOG_INFO("retrying couch_rep_httpc request in ~p seconds " ++
             % "due to remote server error: ~s~s", [Pause/1000, Req#http_db.url,
             "due to remote server error: ~p Body ~s", [Pause/1000, Code,
             Body]),
         timer:sleep(Pause),
-        do_request(Req#http_db{retries = Retries-1, pause = 2*Pause})
+        do_request(Req#http_db{retries = Retries-1, pause = 2*Pause});
+    true ->
+        exit({http_request_failed, ?l2b(["unhandled response code ", Status])})
     end;
 
 process_response({ibrowse_req_id, Id}, _Req) ->
