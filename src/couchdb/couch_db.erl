@@ -468,7 +468,11 @@ sort_and_check_atts(#doc{atts=Atts}=Doc) ->
     Doc#doc{atts=Atts2}.
 
 
-update_docs(Db, Docs, Options, replicated_changes) ->
+update_docs(#db{permissions={Allow, _Deny}}=Db, Docs, Options, replicated_changes) ->
+    case lists:member(<<"write">>, Allow) orelse lists:member(<<"*">>, Allow) of
+        true -> noop;
+        _ -> throw({unauthorized, "Access denied: mode=write."})
+    end,
     couch_stats_collector:increment({couchdb, database_writes}),
     DocBuckets = group_alike_docs(Docs),
 
@@ -493,7 +497,11 @@ update_docs(Db, Docs, Options, replicated_changes) ->
     {ok, []} = write_and_commit(Db, DocBuckets4, [], [merge_conflicts | Options]),
     {ok, DocErrors};
 
-update_docs(Db, Docs, Options, interactive_edit) ->
+update_docs(#db{permissions={Allow, _Deny}}=Db, Docs, Options, interactive_edit) ->
+    case lists:member(<<"write">>, Allow) orelse lists:member(<<"*">>, Allow) of
+        true -> noop;
+        _ -> throw({unauthorized, "NO WRITING."})
+    end,
     couch_stats_collector:increment({couchdb, database_writes}),
     AllOrNothing = lists:member(all_or_nothing, Options),
     % go ahead and generate the new revision ids for the documents.

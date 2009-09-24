@@ -50,19 +50,65 @@ get_stats() ->
 sup_start_link() ->
     gen_server:start_link({local, couch_server}, couch_server, [], []).
 
+get_permissions(DbName, Role, [Rule|Rules], {Allow, Deny}=Permissions0) ->
+    RuleDbName = proplists:get_value(<<"db">>, Rule),
+    RuleRole = proplists:get_value(<<"role">>, Rule),
+    Permissions1 = case {DbName, Role} of
+        {_, _} when RuleDbName =:= <<"*">> orelse RuleDbName =:= DbName, RuleRole =:= <<"*">> orelse RuleRole =:= Role ->
+            RuleAllow = proplists:get_value(<<"allow">>, Rule, undefined),
+            RuleDeny = proplists:get_value(<<"deny">>, Rule, undefined),
+            case RuleAllow of
+                undefined ->
+                    case RuleDeny of
+                        undefined -> Permissions0;
+                        <<"*">> -> {[], [<<"*">>]};
+                        _ -> {Allow, [RuleDeny|Deny]}
+                    end;
+                <<"*">> -> {[<<"*">>], []};
+                _ -> {[RuleAllow|Allow], Deny}
+            end;
+        _ -> 
+            Permissions0
+    end,
+    get_permissions(DbName, Role, Rules, Permissions1);
+get_permissions(_DbName, _Role, [], Permissions) -> Permissions.
+
 open(DbName, Options) ->
-    case gen_server:call(couch_server, {open, DbName, Options}) of
-    {ok, MainPid} ->
-        Ctx = proplists:get_value(user_ctx, Options, #user_ctx{}),
-        couch_db:open_ref_counted(MainPid, Ctx);
-    Error ->
-        Error
+    #user_ctx{roles=Roles}=Ctx = proplists:get_value(user_ctx, Options, #user_ctx{}),
+    DefaultPermissions = {[<<"*">>], []},
+    Permissions = case lists:member(<<"_admin">>, Roles) of
+        true -> {[<<"*">>], []};
+        _ ->
+            % By default we allow all
+            UserDbName = ?l2b(couch_config:get("couch_httpd_auth", "authentication_db")),
+            case couch_db:open(UserDbName, [{user_ctx, #user_ctx{roles=[<<"_admin">>]}}]) of
+                {ok, UserDb} ->
+                    {ok, #doc{body=Body}} = couch_db:open_doc(UserDb, <<"_local/_acl">>),
+                    {Props} = Body,
+                    Rules = [Rule || {Rule} <- proplists:get_value(<<"rules">>, Props)],
+                    lists:flatmap(fun(Role) -> get_permissions(DbName, Role, Rules, DefaultPermissions) end, Roles);
+                _ ->
+                    DefaultPermissions
+            end
+    end,
+    case Permissions of
+    {[], _} -> % No "allow" permissions
+        throw({unauthorized, "Access denied."});
+    _ ->
+        case gen_server:call(couch_server, {open, DbName, Options}) of
+        {ok, MainPid} ->
+            {ok, Db} = couch_db:open_ref_counted(MainPid, Ctx),
+            {ok, Db#db{permissions=Permissions}};
+        Error ->
+            Error
+        end
     end.
 
 create(DbName, Options) ->
     case gen_server:call(couch_server, {create, DbName, Options}) of
     {ok, MainPid} ->
         Ctx = proplists:get_value(user_ctx, Options, #user_ctx{}),
+        % TODO check auth here
         couch_db:open_ref_counted(MainPid, Ctx);
     Error ->
         Error

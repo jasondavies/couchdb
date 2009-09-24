@@ -141,6 +141,7 @@
     update_pid = nil,
     compactor_pid = nil,
     instance_start_time, % number of microsecs since jan 1 1970 as a binary string
+    permissions,
     fd,
     fd_ref_counter,
     header = #db_header{},

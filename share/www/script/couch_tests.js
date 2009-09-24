@@ -60,6 +60,7 @@ loadTest("multiple_rows.js");
 loadScript("script/oauth.js");
 loadScript("script/sha1.js");
 loadTest("oauth.js");
+loadTest("per_db_auth.js");
 loadTest("purge.js");
 loadTest("recreate_doc.js");
 loadTest("reduce.js");
