@@ -83,10 +83,14 @@ open(DbName, Options) ->
             UserDbName = ?l2b(couch_config:get("couch_httpd_auth", "authentication_db")),
             case couch_db:open(UserDbName, [{user_ctx, #user_ctx{roles=[<<"_admin">>]}}]) of
                 {ok, UserDb} ->
-                    {ok, #doc{body=Body}} = couch_db:open_doc(UserDb, <<"_local/_acl">>),
-                    {Props} = Body,
-                    Rules = [Rule || {Rule} <- proplists:get_value(<<"rules">>, Props)],
-                    lists:flatmap(fun(Role) -> get_permissions(DbName, Role, Rules, DefaultPermissions) end, Roles);
+                    case couch_db:open_doc(UserDb, <<"_local/_acl">>) of
+                        {ok, #doc{body=Body}} ->
+                            {Props} = Body,
+                            Rules = [Rule || {Rule} <- proplists:get_value(<<"rules">>, Props)],
+                            lists:flatmap(fun(Role) -> get_permissions(DbName, Role, Rules, DefaultPermissions) end, Roles);
+                        _ ->
+                            DefaultPermissions
+                    end;
                 _ ->
                     DefaultPermissions
             end
