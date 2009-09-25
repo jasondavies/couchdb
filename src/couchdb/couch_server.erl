@@ -74,6 +74,7 @@ get_permissions(DbName, Role, [Rule|Rules], {Allow, Deny}=Permissions0) ->
 get_permissions(_DbName, _Role, [], Permissions) -> Permissions.
 
 open(DbName, Options) ->
+    ?LOG_DEBUG("OPEN ~p ~p", [DbName, Options]),
     #user_ctx{roles=Roles}=Ctx = proplists:get_value(user_ctx, Options, #user_ctx{}),
     DefaultPermissions = {[<<"*">>], []},
     Permissions = case lists:member(<<"_admin">>, Roles) of

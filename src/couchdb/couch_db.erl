@@ -497,10 +497,14 @@ update_docs(#db{user_ctx=#user_ctx{permissions={Allow, _Deny}}}=Db, Docs, Option
     {ok, []} = write_and_commit(Db, DocBuckets4, [], [merge_conflicts | Options]),
     {ok, DocErrors};
 
-update_docs(#db{user_ctx=#user_ctx{permissions={Allow, _Deny}}}=Db, Docs, Options, interactive_edit) ->
-    case lists:member(<<"write">>, Allow) orelse lists:member(<<"*">>, Allow) of
-        true -> noop;
-        _ -> throw({unauthorized, "NO WRITING."})
+update_docs(#db{user_ctx=UserCtx}=Db, Docs, Options, interactive_edit) ->
+    case UserCtx of
+        #user_ctx{permissions={Allow, _Deny}} ->
+            case lists:member(<<"write">>, Allow) orelse lists:member(<<"*">>, Allow) of
+                true -> noop;
+                _ -> throw({unauthorized, "NO WRITING."})
+            end;
+        _ -> noop
     end,
     couch_stats_collector:increment({couchdb, database_writes}),
     AllOrNothing = lists:member(all_or_nothing, Options),
