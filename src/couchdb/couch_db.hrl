@@ -108,7 +108,8 @@
 
 -record(user_ctx,
     {name=null,
-    roles=[]
+    roles=[],
+    permissions
     }).
 
 % This should be updated anytime a header change happens that requires more
@@ -141,7 +142,6 @@
     update_pid = nil,
     compactor_pid = nil,
     instance_start_time, % number of microsecs since jan 1 1970 as a binary string
-    permissions,
     fd,
     fd_ref_counter,
     header = #db_header{},

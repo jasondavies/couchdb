@@ -78,22 +78,27 @@ open(DbName, Options) ->
     DefaultPermissions = {[<<"*">>], []},
     Permissions = case lists:member(<<"_admin">>, Roles) of
         true -> {[<<"*">>], []};
-        _ ->
+        _ when DbName =/= <<"users">> ->
             % By default we allow all
             UserDbName = ?l2b(couch_config:get("couch_httpd_auth", "authentication_db")),
             case couch_db:open(UserDbName, [{user_ctx, #user_ctx{roles=[<<"_admin">>]}}]) of
                 {ok, UserDb} ->
-                    case couch_db:open_doc(UserDb, <<"_local/_acl">>) of
-                        {ok, #doc{body=Body}} ->
-                            {Props} = Body,
-                            Rules = [Rule || {Rule} <- proplists:get_value(<<"rules">>, Props)],
-                            lists:flatmap(fun(Role) -> get_permissions(DbName, Role, Rules, DefaultPermissions) end, Roles);
-                        _ ->
-                            DefaultPermissions
+                    try
+                        case couch_db:open_doc(UserDb, <<"_local/_acl">>) of
+                            {ok, #doc{body={Props}}} ->
+                                Rules = [Rule || {Rule} <- proplists:get_value(<<"rules">>, Props)],
+                                lists:flatmap(fun(Role) -> get_permissions(DbName, Role, Rules, DefaultPermissions) end, Roles);
+                            _ ->
+                                DefaultPermissions
+                        end
+                    after
+                        catch couch_db:close(UserDb)
                     end;
                 _ ->
                     DefaultPermissions
-            end
+            end;
+        _ ->
+            DefaultPermissions
     end,
     case Permissions of
     {[], _} -> % No "allow" permissions
@@ -101,8 +106,7 @@ open(DbName, Options) ->
     _ ->
         case gen_server:call(couch_server, {open, DbName, Options}) of
         {ok, MainPid} ->
-            {ok, Db} = couch_db:open_ref_counted(MainPid, Ctx),
-            {ok, Db#db{permissions=Permissions}};
+            couch_db:open_ref_counted(MainPid, Ctx#user_ctx{permissions=Permissions});
         Error ->
             Error
         end

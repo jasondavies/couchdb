@@ -468,7 +468,7 @@ sort_and_check_atts(#doc{atts=Atts}=Doc) ->
     Doc#doc{atts=Atts2}.
 
 
-update_docs(#db{permissions={Allow, _Deny}}=Db, Docs, Options, replicated_changes) ->
+update_docs(#db{user_ctx=#user_ctx{permissions={Allow, _Deny}}}=Db, Docs, Options, replicated_changes) ->
     case lists:member(<<"write">>, Allow) orelse lists:member(<<"*">>, Allow) of
         true -> noop;
         _ -> throw({unauthorized, "Access denied: mode=write."})
@@ -497,7 +497,7 @@ update_docs(#db{permissions={Allow, _Deny}}=Db, Docs, Options, replicated_change
     {ok, []} = write_and_commit(Db, DocBuckets4, [], [merge_conflicts | Options]),
     {ok, DocErrors};
 
-update_docs(#db{permissions={Allow, _Deny}}=Db, Docs, Options, interactive_edit) ->
+update_docs(#db{user_ctx=#user_ctx{permissions={Allow, _Deny}}}=Db, Docs, Options, interactive_edit) ->
     case lists:member(<<"write">>, Allow) orelse lists:member(<<"*">>, Allow) of
         true -> noop;
         _ -> throw({unauthorized, "NO WRITING."})
