@@ -50,31 +50,20 @@ get_stats() ->
 sup_start_link() ->
     gen_server:start_link({local, couch_server}, couch_server, [], []).
 
-get_permissions(DbName, Role, [Rule|Rules], {Allow, Deny}=Permissions0) ->
+get_permissions(DbName, Roles, [Rule|Rules], DefaultPermissions) ->
     RuleDbName = proplists:get_value(<<"db">>, Rule),
     RuleRole = proplists:get_value(<<"role">>, Rule),
-    Permissions1 = case {DbName, Role} of
-        {_, _} when RuleDbName =:= <<"*">> orelse RuleDbName =:= DbName, RuleRole =:= <<"*">> orelse RuleRole =:= Role ->
-            RuleAllow = proplists:get_value(<<"allow">>, Rule, undefined),
-            RuleDeny = proplists:get_value(<<"deny">>, Rule, undefined),
-            case RuleAllow of
-                undefined ->
-                    case RuleDeny of
-                        undefined -> Permissions0;
-                        <<"*">> -> {[], [<<"*">>]};
-                        _ -> {Allow, [RuleDeny|Deny]}
-                    end;
-                <<"*">> -> {[<<"*">>], []};
-                _ -> {[RuleAllow|Allow], Deny}
-            end;
+    case lists:member(RuleRole, Roles) orelse RuleRole =:= <<"*">> of
+        true when RuleDbName =:= <<"*">> orelse RuleDbName =:= DbName ->
+            RuleAllow = proplists:get_value(<<"allow">>, Rule, []),
+            RuleDeny = proplists:get_value(<<"deny">>, Rule, []),
+            {RuleAllow, RuleDeny};
         _ -> 
-            Permissions0
-    end,
-    get_permissions(DbName, Role, Rules, Permissions1);
-get_permissions(_DbName, _Role, [], Permissions) -> Permissions.
+            get_permissions(DbName, Roles, Rules, DefaultPermissions)
+    end;
+get_permissions(_DbName, _Roles, [], DefaultPermissions) -> DefaultPermissions.
 
 open(DbName, Options) ->
-    ?LOG_DEBUG("OPEN ~p ~p", [DbName, Options]),
     #user_ctx{roles=Roles}=Ctx = proplists:get_value(user_ctx, Options, #user_ctx{}),
     DefaultPermissions = {[<<"*">>], []},
     Permissions = case lists:member(<<"_admin">>, Roles) of
@@ -88,7 +77,7 @@ open(DbName, Options) ->
                         case couch_db:open_doc(UserDb, <<"_local/_acl">>) of
                             {ok, #doc{body={Props}}} ->
                                 Rules = [Rule || {Rule} <- proplists:get_value(<<"rules">>, Props)],
-                                lists:flatmap(fun(Role) -> get_permissions(DbName, Role, Rules, DefaultPermissions) end, Roles);
+                                get_permissions(DbName, Roles, Rules, DefaultPermissions);
                             _ ->
                                 DefaultPermissions
                         end
