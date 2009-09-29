@@ -14,12 +14,11 @@
 % the License.
 
 main(_) ->
+    code:add_patha("src/etap"),
     code:add_pathz("src/couchdb"),
     application:start(crypto),
 
-    % Changed to 9 till we figure out the buildbot freeze.
-    %etap:plan(10),
-    etap:plan(9),
+    etap:plan(11),
     case (catch test()) of
         ok ->
             etap:end_tests();
@@ -40,18 +39,25 @@ test() ->
     % terminate_linked
     Self = self(),
     
-    % This is causing halts on the buildbot make coverage runner.
-    % Im disabling until we get build bot running but we need to
-    % revisit this.
-    %spawn(fun() ->
-    %    ChildPid = spawn_link(fun() -> receive shutdown -> ok end end),
-    %    couch_util:terminate_linked(normal),
-    %    Self ! {pid, ChildPid}
-    %end),
-    %receive
-    %    {pid, Pid} ->
-    %        etap:ok(not is_process_alive(Pid), "why wont this work?")
-    %end,
+    spawn(fun() ->
+        SecondSelf = self(),
+        ChildPid = spawn_link(fun() ->
+            SecondSelf ! {child, started},
+            receive shutdown -> ok end
+        end),
+        PidUp = receive
+            {child, started} -> ok
+        after 1000 ->
+            {error, timeout}
+        end,
+        etap:is(ok, PidUp, "Started a linked process."),
+        couch_util:terminate_linked(normal),
+        Self ! {pid, ChildPid}
+    end),
+    receive
+        {pid, Pid} ->
+            etap:ok(not is_process_alive(Pid), "Linked process was killed.")
+    end,
 
     % implode
     etap:is([1, 38, 2, 38, 3], couch_util:implode([1,2,3],"&"),
@@ -74,7 +80,7 @@ test() ->
         IntsToAGazillion = lists:seq(1, 200000),
         LotsOfData = lists:map(
             fun(Int) -> {Int, <<"foobar">>} end,
-        lists:seq(1, 200000)),
+        lists:seq(1, 500000)),
         etap:ok(couch_util:should_flush(),
             "Allocation 200K tuples puts us above the memory threshold.")
     end,
