@@ -52,13 +52,27 @@ sup_start_link() ->
 
 get_permissions(DbName, Roles, [Rule|Rules], DefaultPermissions) ->
     RuleDbName = proplists:get_value(<<"db">>, Rule),
-    RuleRole = proplists:get_value(<<"role">>, Rule),
-    case lists:member(RuleRole, Roles) orelse RuleRole =:= <<"*">> of
-        true when RuleDbName =:= <<"*">> orelse RuleDbName =:= DbName ->
+    DbPrefixSize = size(RuleDbName) - 1,
+    DbSuffixSize = size(DbName) - DbPrefixSize,
+    DbMatch = case RuleDbName of
+        <<DbPrefix:DbPrefixSize/binary, "*">> ->
+            case DbName of
+                <<DbPrefix:DbPrefixSize/binary, _Rest:DbSuffixSize/binary>> -> true;
+                _ -> false
+            end;
+        DbName -> true;
+        _ -> false
+    end,
+    RoleMatch = case proplists:get_value(<<"role">>, Rule) of
+        <<"*">> -> true;
+        RuleRole -> lists:member(RuleRole, Roles)
+    end,
+    if
+        DbMatch andalso RoleMatch ->
             RuleAllow = proplists:get_value(<<"allow">>, Rule, []),
             RuleDeny = proplists:get_value(<<"deny">>, Rule, []),
             {RuleAllow, RuleDeny};
-        _ -> 
+        true -> 
             get_permissions(DbName, Roles, Rules, DefaultPermissions)
     end;
 get_permissions(_DbName, _Roles, [], DefaultPermissions) -> DefaultPermissions.
