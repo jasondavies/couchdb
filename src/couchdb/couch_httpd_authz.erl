@@ -64,12 +64,10 @@ get_permissions_for_acl(DbName, Roles, ACL) ->
     DefaultPermissions = {[<<"*">>], []},
     case lists:member(<<"_admin">>, Roles) of
         true -> {[<<"*">>], []};
-        _ when DbName =/= <<"users">> ->
+        _ ->
             % By default we allow all
             case ACL of
                 [] -> DefaultPermissions;
                 Rules -> get_permissions(DbName, Roles, Rules, DefaultPermissions)
-            end;
-        _ ->
-            DefaultPermissions
+            end
     end.

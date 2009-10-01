@@ -161,7 +161,10 @@ terminate(Reason, _Srv) ->
 
 all_databases(#user_ctx{roles=Roles}) ->
     {ok, #server{root_dir=Root}} = gen_server:call(couch_server, get_server),
-    ACL = couch_httpd_authz:get_acl(),
+    ACL = case lists:member(<<"_admin">>, Roles) of
+        true -> admin;
+        _ -> couch_httpd_authz:get_acl()
+    end,
     Filenames =
     filelib:fold_files(Root, "^[a-z0-9\\_\\$()\\+\\-]*[\\.]couch$", true,
         fun(Filename, AccIn) ->
@@ -170,12 +173,16 @@ all_databases(#user_ctx{roles=Roles}) ->
             RelativeFilename -> ok
             end,
             DbName = list_to_binary(filename:rootname(RelativeFilename, ".couch")),
-            Permissions = couch_httpd_authz:get_permissions_for_acl(DbName, Roles, ACL),
-            case Permissions of
-                {[], _} -> % No "allow" permissions
-                    AccIn;
+            case ACL of
+                admin -> [DbName | AccIn];
                 _ ->
-                [DbName | AccIn]
+                    Permissions = couch_httpd_authz:get_permissions_for_acl(DbName, Roles, ACL),
+                    case Permissions of
+                        {[], _} -> % No "allow" permissions
+                            AccIn;
+                        _ ->
+                        [DbName | AccIn]
+                    end
             end
         end, []),
     {ok, Filenames}.
