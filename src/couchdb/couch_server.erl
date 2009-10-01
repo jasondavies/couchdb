@@ -77,28 +77,33 @@ get_permissions(DbName, Roles, [Rule|Rules], DefaultPermissions) ->
     end;
 get_permissions(_DbName, _Roles, [], DefaultPermissions) -> DefaultPermissions.
 
-get_acl(DbName, Roles) ->
+get_acl() ->
+    UserDbName = ?l2b(couch_config:get("couch_httpd_auth", "authentication_db")),
+    case couch_db:open(UserDbName, [{user_ctx, #user_ctx{roles=[<<"_admin">>]}}]) of
+        {ok, UserDb} ->
+            try
+                case couch_db:open_doc(UserDb, <<"_local/_acl">>) of
+                    {ok, #doc{body={Props}}} ->
+                        [Rule || {Rule} <- proplists:get_value(<<"rules">>, Props)];
+                    _ ->
+                        []
+                end
+            after
+                catch couch_db:close(UserDb)
+            end;
+        _ ->
+            []
+    end.
+
+get_permissions_for_acl(DbName, Roles, ACL) ->
     DefaultPermissions = {[<<"*">>], []},
     case lists:member(<<"_admin">>, Roles) of
         true -> {[<<"*">>], []};
         _ when DbName =/= <<"users">> ->
             % By default we allow all
-            UserDbName = ?l2b(couch_config:get("couch_httpd_auth", "authentication_db")),
-            case couch_db:open(UserDbName, [{user_ctx, #user_ctx{roles=[<<"_admin">>]}}]) of
-                {ok, UserDb} ->
-                    try
-                        case couch_db:open_doc(UserDb, <<"_local/_acl">>) of
-                            {ok, #doc{body={Props}}} ->
-                                Rules = [Rule || {Rule} <- proplists:get_value(<<"rules">>, Props)],
-                                get_permissions(DbName, Roles, Rules, DefaultPermissions);
-                            _ ->
-                                DefaultPermissions
-                        end
-                    after
-                        catch couch_db:close(UserDb)
-                    end;
-                _ ->
-                    DefaultPermissions
+            case ACL of
+                [] -> DefaultPermissions;
+                Rules -> get_permissions(DbName, Roles, Rules, DefaultPermissions)
             end;
         _ ->
             DefaultPermissions
@@ -106,7 +111,12 @@ get_acl(DbName, Roles) ->
 
 open(DbName, Options) ->
     #user_ctx{roles=Roles}=Ctx = proplists:get_value(user_ctx, Options, #user_ctx{}),
-    Permissions = get_acl(DbName, Roles),
+    Permissions = case lists:member(<<"_admin">>, Roles) of
+        true -> {[<<"*">>], []};
+        _ ->
+            ACL = get_acl(),
+            get_permissions_for_acl(DbName, Roles, ACL)
+    end,
     case Permissions of
     {[], _} -> % No "allow" permissions
         throw({unauthorized, "Access denied."});
@@ -210,6 +220,7 @@ terminate(Reason, _Srv) ->
 
 all_databases(#user_ctx{roles=Roles}) ->
     {ok, #server{root_dir=Root}} = gen_server:call(couch_server, get_server),
+    ACL = get_acl(),
     Filenames =
     filelib:fold_files(Root, "^[a-z0-9\\_\\$()\\+\\-]*[\\.]couch$", true,
         fun(Filename, AccIn) ->
@@ -218,7 +229,7 @@ all_databases(#user_ctx{roles=Roles}) ->
             RelativeFilename -> ok
             end,
             DbName = list_to_binary(filename:rootname(RelativeFilename, ".couch")),
-            Permissions = get_acl(DbName, Roles),
+            Permissions = get_permissions_for_acl(DbName, Roles, ACL),
             case Permissions of
                 {[], _} -> % No "allow" permissions
                     AccIn;
