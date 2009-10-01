@@ -13,7 +13,7 @@
 -module(couch_server).
 -behaviour(gen_server).
 
--export([open/2,create/2,delete/2,all_databases/0,get_version/0]).
+-export([open/2,create/2,delete/2,all_databases/1,get_version/0]).
 -export([init/1, handle_call/3,sup_start_link/0]).
 -export([handle_cast/2,code_change/3,handle_info/2,terminate/2]).
 -export([dev_start/0,is_admin/2,has_admins/0,get_stats/0]).
@@ -77,10 +77,9 @@ get_permissions(DbName, Roles, [Rule|Rules], DefaultPermissions) ->
     end;
 get_permissions(_DbName, _Roles, [], DefaultPermissions) -> DefaultPermissions.
 
-open(DbName, Options) ->
-    #user_ctx{roles=Roles}=Ctx = proplists:get_value(user_ctx, Options, #user_ctx{}),
+get_acl(DbName, Roles) ->
     DefaultPermissions = {[<<"*">>], []},
-    Permissions = case lists:member(<<"_admin">>, Roles) of
+    case lists:member(<<"_admin">>, Roles) of
         true -> {[<<"*">>], []};
         _ when DbName =/= <<"users">> ->
             % By default we allow all
@@ -103,7 +102,11 @@ open(DbName, Options) ->
             end;
         _ ->
             DefaultPermissions
-    end,
+    end.
+
+open(DbName, Options) ->
+    #user_ctx{roles=Roles}=Ctx = proplists:get_value(user_ctx, Options, #user_ctx{}),
+    Permissions = get_acl(DbName, Roles),
     case Permissions of
     {[], _} -> % No "allow" permissions
         throw({unauthorized, "Access denied."});
@@ -205,7 +208,7 @@ terminate(Reason, _Srv) ->
     couch_util:terminate_linked(Reason),
     ok.
 
-all_databases() ->
+all_databases(#user_ctx{roles=Roles}) ->
     {ok, #server{root_dir=Root}} = gen_server:call(couch_server, get_server),
     Filenames =
     filelib:fold_files(Root, "^[a-z0-9\\_\\$()\\+\\-]*[\\.]couch$", true,
@@ -214,7 +217,14 @@ all_databases() ->
             [$/ | RelativeFilename] -> ok;
             RelativeFilename -> ok
             end,
-            [list_to_binary(filename:rootname(RelativeFilename, ".couch")) | AccIn]
+            DbName = list_to_binary(filename:rootname(RelativeFilename, ".couch")),
+            Permissions = get_acl(DbName, Roles),
+            case Permissions of
+                {[], _} -> % No "allow" permissions
+                    AccIn;
+                _ ->
+                [DbName | AccIn]
+            end
         end, []),
     {ok, Filenames}.
 

@@ -63,8 +63,8 @@ handle_sleep_req(#httpd{method='GET'}=Req) ->
 handle_sleep_req(Req) ->
     send_method_not_allowed(Req, "GET,HEAD").
 
-handle_all_dbs_req(#httpd{method='GET'}=Req) ->
-    {ok, DbNames} = couch_server:all_databases(),
+handle_all_dbs_req(#httpd{method='GET', user_ctx=Ctx}=Req) ->
+    {ok, DbNames} = couch_server:all_databases(Ctx),
     send_json(Req, DbNames);
 handle_all_dbs_req(Req) ->
     send_method_not_allowed(Req, "GET,HEAD").
