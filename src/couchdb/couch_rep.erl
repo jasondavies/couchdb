@@ -559,7 +559,7 @@ ensure_full_commit(#http_db{} = Target) ->
     true = proplists:get_value(<<"ok">>, ResultProps),
     proplists:get_value(<<"instance_start_time">>, ResultProps);
 ensure_full_commit(Target) ->
-    {ok, NewDb} = couch_db:open(Target#db.name, []),
+    {ok, NewDb} = couch_db:open(Target#db.name, [{user_ctx, #user_ctx{roles=[<<"_admin">>]}}]),
     UpdateSeq = couch_db:get_update_seq(Target),
     CommitSeq = couch_db:get_committed_update_seq(NewDb),
     InstanceStartTime = NewDb#db.instance_start_time,
@@ -587,7 +587,7 @@ ensure_full_commit(#http_db{} = Source, RequiredSeq) ->
         proplists:get_value(<<"instance_start_time">>, ResultProps);
     undefined -> nil end;
 ensure_full_commit(Source, RequiredSeq) ->
-    {ok, NewDb} = couch_db:open(Source#db.name, []),
+    {ok, NewDb} = couch_db:open(Source#db.name, [{user_ctx, #user_ctx{roles=[<<"_admin">>]}}]),
     CommitSeq = couch_db:get_committed_update_seq(NewDb),
     InstanceStartTime = NewDb#db.instance_start_time,
     couch_db:close(NewDb),
@@ -615,7 +615,7 @@ update_local_doc(Db, Doc) ->
 up_to_date(#http_db{}, _Seq) ->
     true;
 up_to_date(Source, Seq) ->
-    {ok, NewDb} = couch_db:open(Source#db.name, []),
+    {ok, NewDb} = couch_db:open(Source#db.name, [{user_ctx, #user_ctx{roles=[<<"_admin">>]}}]),
     T = NewDb#db.update_seq == Seq,
     couch_db:close(NewDb),
     T.
