@@ -67,7 +67,20 @@ default_authentication_handler(Req) ->
         true ->
             Req#httpd{user_ctx=#user_ctx{name=?l2b(User), roles=[<<"_admin">>]}};
         false ->
-            throw({unauthorized, <<"Name or password is incorrect.">>})
+            % Look up user from db
+            UserDoc = case get_user(?l2b(User)) of
+                nil -> [];
+                Result -> Result
+            end,
+            UserSalt = proplists:get_value(<<"salt">>, UserDoc, <<>>),
+            PasswordHash = hash_password(?l2b(Pass), UserSalt),
+            case proplists:get_value(<<"password_sha">>, UserDoc, nil) of
+                ExpectedHash when ExpectedHash == PasswordHash ->
+                    Req#httpd{user_ctx=#user_ctx{name=?l2b(User),
+                        roles=proplists:get_value(<<"roles">>, UserDoc, [])}};
+                _ ->
+                    throw({unauthorized, <<"Name or password is incorrect.">>})
+            end
         end;
     nil ->
         case couch_server:has_admins() of
