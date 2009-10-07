@@ -377,8 +377,11 @@ verify_permission(DbName, #user_ctx{name=Name, roles=Roles}, _Permission) ->
                 null -> throw({unauthorized, "Please authenticate."});
                 _ ->
                     NameSize = size(Name),
+                    <<NameMd5_0:3/binary, NameMd5_1:3/binary, _/binary>> = ?l2b(couch_util:to_hex(crypto:md5(Name))),
+                    Prefix = <<"u/", NameMd5_0:3/binary, "/", NameMd5_1:3/binary, "/", Name:NameSize/binary, "/">>,
+                    PrefixSize = size(Prefix),
                     case DbName of
-                        <<Name:NameSize/binary, "/", _Suffix/binary>> ->
+                        <<Prefix:PrefixSize/binary, _Suffix/binary>> ->
                             ok;
                         _ ->
                             throw({forbidden, "Access denied."})
