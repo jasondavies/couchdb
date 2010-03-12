@@ -63,7 +63,14 @@ handle_http_req(#httpd{method='GET'}=Req) ->
     List = case dict:find("CouchDB._http._tcp.local", Subs) of
         {ok, Data} ->
             ?LOG_DEBUG("DATA ~p", [Data]),
-            [[?l2b(Name), ?l2b([A|B])] || {Name, #service{server=[A|B]}=Service} <- dict:to_list(Data)];
+            [{[
+                {server, ?l2b(Server)},
+                {address, case Address of
+                    undefined -> null;
+                    _ -> ?l2b(string:join([integer_to_list(I) || I <- tuple_to_list(Address)], "."))
+                end},
+                {port, Port}
+            ]} || {Name, #service{server=Server, address=Address, port=Port}} <- dict:to_list(Data), is_list(Server)];
         error ->
             []
     end,
