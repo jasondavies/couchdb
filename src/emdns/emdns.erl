@@ -78,7 +78,6 @@ set_socket(Pid, Socket) ->
 receiver(#state{subscriptions=Sub}=State) ->
     receive
         {setsock, Socket} ->
-            io:format("woo~n"),
             receiver(State#state{socket=Socket});
         {udp, Socket, _IP, _InPortNo, Packet} ->
             NewState = process_dnsrec(State, Socket, inet_dns:decode(Packet)),
