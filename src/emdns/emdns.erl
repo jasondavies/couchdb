@@ -108,7 +108,8 @@ process_dnsrec(#state{subscriptions=Sub, services=Services}=State, Socket, {ok, 
         ok -> ok;
         #dns_rec{anlist=Answers}=Out ->
             Out1 = Out#dns_rec{anlist=lists:reverse(Answers)},
-            gen_udp:send(Socket, ?MDNS_ADDR, ?MDNS_PORT, inet_dns:encode(Out1))
+            gen_udp:send(Socket, ?MDNS_ADDR, ?MDNS_PORT, inet_dns:encode(Out1));
+        _Else -> noop
     end,
     AllResponses = Responses ++ AResponses,
     State#state{subscriptions=dict:map(fun(K, V) -> process_responses(K, V, AllResponses) end, Sub)}.
