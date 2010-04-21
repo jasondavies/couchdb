@@ -62,7 +62,7 @@ handle_http_req(#httpd{method='GET'}=Req) ->
     %?LOG_DEBUG("SUBSCRIPTIONS: ~p ~p", [Subs, Data]),
     List = case dict:find("CouchDB._http._tcp.local", Subs) of
         {ok, Data} ->
-            ?LOG_DEBUG("DATA ~p", [Data]),
+            %?LOG_DEBUG("DATA ~p", [Data]),
             [{[
                 {server, ?l2b(Server)},
                 {address, case Address of
