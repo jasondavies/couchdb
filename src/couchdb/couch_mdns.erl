@@ -29,18 +29,19 @@ new() ->
     gen_server:call(?MODULE, create).
 
 init([]) ->
-    BindAddress0 = couch_config:get("httpd", "bind_address", any),
+    BindAddress0 = couch_config:get("httpd", "bind_address", "0.0.0.0"),
     [Ip0, Ip1, Ip2, Ip3] = [list_to_integer(T) || T <- string:tokens(BindAddress0, ".")],
     BindAddress = {Ip0, Ip1, Ip2, Ip3},
     ?LOG_DEBUG("~p", [BindAddress0]),
-    Port = list_to_integer(couch_config:get("httpd", "port", "5984")),
+    Port0 = couch_config:get("httpd", "port", "5984"),
+    Port = list_to_integer(Port0),
     {_Socket, Pid} = emdns:start(),
     % Register ourselves as a service if [httpd] discoverable = true
     case couch_config:get("httpd", "discoverable", false) of
         "true" ->
             emdns:register_service(Pid, #service{
-                name="CouchDB._http._tcp.local",
-                type="_http._tcp.local",
+                name=BindAddress0 ++ "-" ++ Port0 ++ ".CouchDB._http._tcp.local",
+                type="CouchDB._http._tcp.local",
                 address=BindAddress,
                 port=Port,
                 server=BindAddress0
@@ -59,7 +60,7 @@ handle_call(getsubscriptions, _From, Pid) ->
 
 handle_http_req(#httpd{method='GET'}=Req) ->
     {ok, Subs} = gen_server:call(?MODULE, getsubscriptions, infinity),
-    %?LOG_DEBUG("SUBSCRIPTIONS: ~p ~p", [Subs, Data]),
+    %?LOG_DEBUG("SUBSCRIPTIONS: ~p", [Subs]),
     List = case dict:find("CouchDB._http._tcp.local", Subs) of
         {ok, Data} ->
             %?LOG_DEBUG("DATA ~p", [Data]),
