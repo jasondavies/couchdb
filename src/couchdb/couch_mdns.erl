@@ -67,7 +67,10 @@ handle_http_req(#httpd{method='GET'}=Req) ->
                 {server, ?l2b(Server)},
                 {address, case Address of
                     undefined -> null;
-                    _ -> ?l2b(string:join([integer_to_list(I) || I <- tuple_to_list(Address)], "."))
+                    _ -> ?l2b(string:join([integer_to_list(I) || I <- case is_binary(Address) of
+                        true -> ?b2l(Address);
+                        _ -> tuple_to_list(Address)
+                    end], "."))
                 end},
                 {port, Port}
             ]} || {Name, #service{server=Server, address=Address, port=Port}} <- dict:to_list(Data), is_list(Server)];
