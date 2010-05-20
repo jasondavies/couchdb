@@ -84,11 +84,15 @@ receiver(#state{subscriptions=Sub}=State) ->
             receiver(NewState);
         {reg, Pid, Service} ->
             NewState0 = process_reg(State, Service),
-            Queries = [#dns_query{type=ptr, domain="_services._dns-sd._udp.local"}],
-            NewState = process_dnsrec(NewState0, NewState0#state.socket, {ok, #dns_rec{qdlist=Queries}}),
+            Queries = [#dns_query{type=ptr, domain="_services._dns-sd._udp.local", class=in}],
+            Out = #dns_rec{header=#dns_header{}, qdlist=Queries},
+            NewState = process_dnsrec(NewState0, NewState0#state.socket, {ok, Out}),
             Pid ! {ok, NewState#state.services},
             receiver(NewState);
         {sub, Domain} ->
+            Queries = [#dns_query{type=ptr, domain=Domain, class=in}],
+            Out = #dns_rec{header=#dns_header{}, qdlist=Queries},
+            gen_udp:send(State#state.socket, ?MDNS_ADDR, ?MDNS_PORT, inet_dns:encode(Out)),
             receiver(State#state{subscriptions=dict:store(Domain, dict:new(), Sub)});
         {unsub, Domain} ->
             receiver(State#state{subscriptions=dict:erase(Domain, Sub)});
