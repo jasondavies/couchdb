@@ -40,8 +40,8 @@ init([]) ->
     case couch_config:get("httpd", "discoverable", false) of
         "true" ->
             emdns:register_service(Pid, #service{
-                name=BindAddress0 ++ "-" ++ Port0 ++ ".CouchDB._http._tcp.local",
-                type="CouchDB._http._tcp.local",
+                name="CouchDB." ++ BindAddress0 ++ "-" ++ Port0 ++ "._http._tcp.local",
+                type="_http._tcp.local",
                 address=BindAddress,
                 port=Port,
                 server=BindAddress0
@@ -49,7 +49,7 @@ init([]) ->
         _ ->
             noop
     end,
-    emdns:subscribe(Pid, "CouchDB._http._tcp.local"),
+    emdns:subscribe(Pid, "_http._tcp.local"),
     {ok, Pid}.
 
 terminate(_Reason, _State) ->
@@ -61,20 +61,33 @@ handle_call(getsubscriptions, _From, Pid) ->
 handle_http_req(#httpd{method='GET'}=Req) ->
     {ok, Subs} = gen_server:call(?MODULE, getsubscriptions, infinity),
     %?LOG_DEBUG("SUBSCRIPTIONS: ~p", [Subs]),
-    List = case dict:find("CouchDB._http._tcp.local", Subs) of
+    List = case dict:find("_http._tcp.local", Subs) of
         {ok, Data} ->
-            %?LOG_DEBUG("DATA ~p", [Data]),
-            [{[
-                {server, ?l2b(Server)},
-                {address, case Address of
-                    undefined -> null;
-                    _ -> ?l2b(string:join([integer_to_list(I) || I <- case is_binary(Address) of
-                        true -> ?b2l(Address);
-                        _ -> tuple_to_list(Address)
-                    end], "."))
-                end},
-                {port, Port}
-            ]} || {Name, #service{server=Server, address=Address, port=Port}} <- dict:to_list(Data), is_list(Server)];
+            dict:fold(fun (Key, Value, AccIn) ->
+                case Key of
+                    "CouchDB." ++ _Rest ->
+                        case Value of
+                            #service{
+                                server=Server,
+                                address=Address,
+                                port=Port
+                            } when is_list(Server) -> [{[
+                                    {server, ?l2b(Server)},
+                                    {address, case Address of
+                                        undefined -> null;
+                                        _ -> ?l2b(string:join([integer_to_list(I) || I <- case is_binary(Address) of
+                                            true -> ?b2l(Address);
+                                            _ -> tuple_to_list(Address)
+                                        end], "."))
+                                    end},
+                                    {port, Port}
+                                ]} | AccIn];
+                            _ -> AccIn
+                        end;
+                    _ ->
+                        AccIn
+                end
+            end, [], Data);
         error ->
             []
     end,
