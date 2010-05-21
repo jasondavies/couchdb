@@ -60,7 +60,7 @@ handle_call(getsubscriptions, _From, Pid) ->
 
 handle_http_req(#httpd{method='GET'}=Req) ->
     {ok, Subs} = gen_server:call(?MODULE, getsubscriptions, infinity),
-    %?LOG_DEBUG("SUBSCRIPTIONS: ~p", [Subs]),
+    ?LOG_DEBUG("SUBSCRIPTIONS: ~p", [Subs]),
     List = case dict:find("_http._tcp.local", Subs) of
         {ok, Data} ->
             dict:fold(fun (Key, Value, AccIn) ->
