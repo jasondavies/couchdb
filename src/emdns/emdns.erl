@@ -19,6 +19,7 @@
 -export([getsubscriptions/1, subscribe/2, unsubscribe/2, register_service/2]).
 
 -include("emdns.hrl").
+-include("../couchdb/couch_db.hrl").
 
 -record(state, {
     subscriptions=[],
@@ -90,6 +91,13 @@ receiver(#state{subscriptions=Sub}=State) ->
             NewState = process_dnsrec(NewState0, NewState0#state.socket, {ok, Out}),
             Pid ! {ok, NewState#state.services},
             receiver(NewState);
+        {unreg, Pid, ServiceName} ->
+            NewState = process_unreg(State, ServiceName),
+            Pid ! {ok, NewState#state.services},
+            receiver(NewState);
+        {unreg_all, Pid, Service} ->
+            NewState = process_unreg_all(State),
+            receiver(NewState);
         {sub, Domain} ->
             Queries = [#dns_query{type=ptr, domain=Domain, class=in}, #dns_query{type=srv, domain=Domain, class=in}],
             Out = #dns_rec{header=#dns_header{}, qdlist=Queries},
@@ -126,8 +134,49 @@ register_service(Pid, #service{}=Service) ->
             {ok, Reg}
     end.
 
+unregister_service(Pid, ServiceName) ->
+    Pid ! {unreg, self(), ServiceName},
+    receive
+        {ok, Reg} ->
+            {ok, Reg}
+    end.
+
+unregister_all_services(Pid) ->
+    Pid ! {unreg_all, self()}.
+
 process_reg(#state{services=Services}=State, Service) ->
     State#state{services=[Service|Services]}.
+
+process_unreg(#state{services=Services}=State, ServiceName) ->
+    State#state{services=lists:filter(fun (#service{name=ServiceName}) -> false; (_) -> true end, Services)}.
+
+process_unreg_all(#state{services=Services}=State) ->
+    Out = #dns_rec{
+        header=#dns_header{},
+        anlist=lists:foldl(fun (#service{
+            name=ServiceName,
+            type=ServiceType,
+            address=Address,
+            priority=Prio,
+            weight=Weight,
+            port=Port,
+            server=Server
+        }, Acc) ->
+            [#dns_rr{
+                domain=ServiceType,
+                type=ptr,
+                ttl=0,
+                data=ServiceName
+            }, #dns_rr{
+                domain=ServiceName,
+                type=srv,
+                ttl=0,
+                data={Prio, Weight, Port, Server}
+            } | Acc] end, [], Services)
+    },
+    ?LOG_DEBUG("UNREGISTERING ~p", Out),
+    gen_udp:send(State#state.socket, ?MDNS_ADDR, ?MDNS_PORT, inet_dns:encode(Out)),
+    State#state{services=[]}.
 
 process_queries(_Services, []) -> ok;
 process_queries(Services, Queries) ->
@@ -164,6 +213,7 @@ process_query(Services, #dns_query{type=ptr, domain="_services._dns-sd._udp.loca
     end, Out, Services);
 process_query(Services, #dns_query{type=ptr, domain=Name}, #dns_rec{anlist=Answers}=Out) ->
     Out#dns_rec{anlist=lists:foldl(fun (#service{name=ServiceName}, Acc) -> [#dns_rr{
+        domain=Name,
         type=ptr,
         ttl=?DNS_TTL,
         data=ServiceName
@@ -270,6 +320,9 @@ process_response(#dns_rr{domain=Name, type=srv, data={Prio, Weight, Port, Server
         server=Server
     } end,
     dict:update(Name, F, F(#service{}), Services);
+process_response(#dns_rr{domain=Type, type=ptr, data=Name, ttl=0}, Services) ->
+    ?LOG_DEBUG("ERASING ~p", [Name]),
+    dict:erase(Name, Services);
 process_response(#dns_rr{domain=Type, type=ptr, data=Name}, Services) ->
     F = fun (Service) -> Service#service{
         name=Name,

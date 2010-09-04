@@ -50,9 +50,17 @@ init([]) ->
             noop
     end,
     emdns:subscribe(Pid, "_http._tcp.local"),
+    process_flag(trap_exit, true),
     {ok, Pid}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, Pid) ->
+    ?LOG_DEBUG("terminating", []),
+    case couch_config:get("httpd", "discoverable", false) of
+        "true" ->
+            emdns:unregister_all_services(Pid);
+        _ ->
+            noop
+    end,
     ok.
 
 handle_call(getsubscriptions, _From, Pid) ->
@@ -66,6 +74,7 @@ handle_http_req(#httpd{method='GET'}=Req) ->
             dict:fold(fun (Key, Value, AccIn) ->
                 case Key of
                     "CouchDB." ++ _Rest ->
+                        ?LOG_DEBUG("VALUE ~p", [Value]),
                         case Value of
                             #service{
                                 server=Server,
