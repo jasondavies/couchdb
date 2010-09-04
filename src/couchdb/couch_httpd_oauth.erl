@@ -20,7 +20,7 @@ oauth_authentication_handler(#httpd{mochi_req=MochiReq}=Req) ->
     serve_oauth(Req, fun(URL, Params, Consumer, Signature) ->
         AccessToken = couch_util:get_value("oauth_token", Params),
         case couch_config:get("oauth_token_secrets", AccessToken) of
-            undefined -> 
+            undefined ->
                 couch_httpd:send_error(Req, 400, <<"invalid_token">>,
                     <<"Invalid OAuth token.">>);
             TokenSecret ->
@@ -41,7 +41,7 @@ set_user_ctx(Req, AccessToken) ->
         undefined -> throw({bad_request, unknown_oauth_token});
         Value -> ?l2b(Value)
     end,
-    case couch_httpd_auth:get_user(Name) of
+    case couch_auth_cache:get_user_creds(Name) of
         nil -> Req;
         User ->
             Roles = couch_util:get_value(<<"roles">>, User, []),

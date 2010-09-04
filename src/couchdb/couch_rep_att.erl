@@ -29,11 +29,11 @@ convert_stub(#att{data=stub, name=Name} = Attachment,
     Attachment#att{data=RcvFun}.
 
 cleanup() ->
-    receive 
+    receive
     {ibrowse_async_response, _, _} ->
         %% TODO maybe log, didn't expect to have data here
         cleanup();
-    {ibrowse_async_response_end, _} -> 
+    {ibrowse_async_response_end, _} ->
         cleanup();
     {ibrowse_async_headers, _, _, _} ->
         cleanup()
@@ -54,7 +54,7 @@ attachment_receiver(Ref, Request) ->
         receive_data(Ref, ReqId, ContentEncoding)
     end
     catch
-    throw:{attachment_request_failed, timeout} ->
+    throw:{attachment_request_failed, _} ->
         case {Request#http_db.retries, Request#http_db.pause} of
         {0, _} ->
              ?LOG_INFO("request for ~p failed", [Request#http_db.resource]),
@@ -106,7 +106,7 @@ validate_headers(_Req, 200, Headers) ->
     MochiHeaders = mochiweb_headers:make(Headers),
     {ok, mochiweb_headers:get_value("Content-Encoding", MochiHeaders)};
 validate_headers(Req, Code, Headers) when Code > 299, Code < 400 ->
-    Url = mochiweb_headers:get_value("Location",mochiweb_headers:make(Headers)),
+    Url = couch_rep_httpc:redirect_url(Headers, Req#http_db.url),
     NewReq = couch_rep_httpc:redirected_request(Req, Url),
     {ibrowse_req_id, ReqId} = couch_rep_httpc:request(NewReq),
     receive {ibrowse_async_headers, ReqId, NewCode, NewHeaders} ->

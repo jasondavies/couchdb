@@ -12,7 +12,7 @@
 
 -module(couch_rep_changes_feed).
 -behaviour(gen_server).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, 
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
     code_change/3]).
 
 -export([start_link/4, next/1, stop/1]).
@@ -273,12 +273,10 @@ handle_messages([], State) ->
     {noreply, State};
 handle_messages([<<"{\"results\":[">>|Rest], State) ->
     handle_messages(Rest, State);
-handle_messages([<<"]">>, <<"\"last_seq\":", LastSeqStr/binary>>], State) ->
-    LastSeq = list_to_integer(?b2l(hd(re:split(LastSeqStr, "}")))),
-    handle_feed_completion(State#state{last_seq = LastSeq});
-handle_messages([<<"{\"last_seq\":", LastSeqStr/binary>>], State) ->
-    LastSeq = list_to_integer(?b2l(hd(re:split(LastSeqStr, "}")))),
-    handle_feed_completion(State#state{last_seq = LastSeq});
+handle_messages([<<"]">>, <<"\"last_seq\":", _/binary>>], State) ->
+    handle_feed_completion(State);
+handle_messages([<<"{\"last_seq\":", _/binary>>], State) ->
+    handle_feed_completion(State);
 handle_messages([Chunk|Rest], State) ->
     #state{
         count = Count,
@@ -383,6 +381,6 @@ start_http_request(RawUrl) ->
         {inactivity_timeout, 31000},
         {response_format, binary}
     ],
-    {ibrowse_req_id, Id} = 
+    {ibrowse_req_id, Id} =
         ibrowse:send_req_direct(Pid, RawUrl, [], get, [], Opts, infinity),
     {Pid, Id}.

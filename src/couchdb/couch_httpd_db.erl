@@ -20,7 +20,7 @@
 
 -import(couch_httpd,
     [send_json/2,send_json/3,send_json/4,send_method_not_allowed/2,
-    start_json_response/2,start_json_response/3,
+    send_response/4,start_json_response/2,start_json_response/3,
     send_chunk/2,last_chunk/1,end_json_response/1,
     start_chunked_response/3, absolute_uri/2, send/2,
     start_response_length/4]).
@@ -106,16 +106,23 @@ handle_changes_req(#httpd{method='GET'}=Req, Db) ->
             FeedChangesFun(MakeCallback(Resp))
         end
     end,
+    couch_stats_collector:track_process_count(
+        {httpd, clients_requesting_changes}
+    ),
     WrapperFun(ChangesFun);
 
 handle_changes_req(#httpd{path_parts=[_,<<"_changes">>]}=Req, _Db) ->
     send_method_not_allowed(Req, "GET,HEAD").
 
-handle_compact_req(#httpd{method='POST',path_parts=[DbName,_,Id|_]}=Req, _Db) ->
+handle_compact_req(#httpd{method='POST',path_parts=[DbName,_,Id|_]}=Req, Db) ->
+    ok = couch_db:check_is_admin(Db),
+    couch_httpd:validate_ctype(Req, "application/json"),
     ok = couch_view_compactor:start_compact(DbName, Id),
     send_json(Req, 202, {[{ok, true}]});
 
 handle_compact_req(#httpd{method='POST'}=Req, Db) ->
+    ok = couch_db:check_is_admin(Db),
+    couch_httpd:validate_ctype(Req, "application/json"),
     ok = couch_db:start_compact(Db),
     send_json(Req, 202, {[{ok, true}]});
 
@@ -124,6 +131,8 @@ handle_compact_req(Req, _Db) ->
 
 handle_view_cleanup_req(#httpd{method='POST'}=Req, Db) ->
     % delete unreferenced index files
+    ok = couch_db:check_is_admin(Db),
+    couch_httpd:validate_ctype(Req, "application/json"),
     ok = couch_view:cleanup_index_files(Db),
     send_json(Req, 202, {[{ok, true}]});
 
@@ -138,7 +147,9 @@ handle_design_req(#httpd{
     % load ddoc
     DesignId = <<"_design/", DesignName/binary>>,
     DDoc = couch_httpd_db:couch_doc_open(Db, DesignId, nil, []),
-    Handler = couch_util:dict_find(Action, DesignUrlHandlers, fun db_req/2),
+    Handler = couch_util:dict_find(Action, DesignUrlHandlers, fun(_, _, _) ->
+            throw({not_found, <<"missing handler: ", Action/binary>>})
+        end),
     Handler(Req, Db, DDoc);
 
 handle_design_req(Req, Db) ->
@@ -160,23 +171,13 @@ handle_design_info_req(Req, _Db, _DDoc) ->
 
 create_db_req(#httpd{user_ctx=UserCtx}=Req, DbName) ->
     ok = couch_httpd:verify_is_server_admin(Req),
-    LDbName = ?b2l(DbName),
-    case couch_config:get("couch_httpd_auth", "authentication_db") of
-        LDbName -> 
-            % make sure user's db always has the auth ddoc
-            {ok, Db} = couch_httpd_auth:ensure_users_db_exists(DbName),
-            couch_db:close(Db),
-            DbUrl = absolute_uri(Req, "/" ++ couch_util:url_encode(DbName)),
-            send_json(Req, 201, [{"Location", DbUrl}], {[{ok, true}]});
-        _Else ->
-            case couch_server:create(DbName, [{user_ctx, UserCtx}]) of
-            {ok, Db} ->
-                couch_db:close(Db),
-                DbUrl = absolute_uri(Req, "/" ++ couch_util:url_encode(DbName)),
-                send_json(Req, 201, [{"Location", DbUrl}], {[{ok, true}]});
-            Error ->
-                throw(Error)
-            end
+    case couch_server:create(DbName, [{user_ctx, UserCtx}]) of
+    {ok, Db} ->
+        couch_db:close(Db),
+        DbUrl = absolute_uri(Req, "/" ++ couch_util:url_encode(DbName)),
+        send_json(Req, 201, [{"Location", DbUrl}], {[{ok, true}]});
+    Error ->
+        throw(Error)
     end.
 
 delete_db_req(#httpd{user_ctx=UserCtx}=Req, DbName) ->
@@ -189,15 +190,6 @@ delete_db_req(#httpd{user_ctx=UserCtx}=Req, DbName) ->
     end.
 
 do_db_req(#httpd{user_ctx=UserCtx,path_parts=[DbName|_]}=Req, Fun) ->
-    LDbName = ?b2l(DbName),
-    % I hope this lookup is cheap.
-    case couch_config:get("couch_httpd_auth", "authentication_db") of
-        LDbName -> 
-            % make sure user's db always has the auth ddoc
-            {ok, ADb} = couch_httpd_auth:ensure_users_db_exists(DbName),
-            couch_db:close(ADb);
-        _Else -> ok
-    end,
     case couch_db:open(DbName, [{user_ctx, UserCtx}]) of
     {ok, Db} ->
         try
@@ -214,6 +206,7 @@ db_req(#httpd{method='GET',path_parts=[_DbName]}=Req, Db) ->
     send_json(Req, {DbInfo});
 
 db_req(#httpd{method='POST',path_parts=[DbName]}=Req, Db) ->
+    couch_httpd:validate_ctype(Req, "application/json"),
     Doc = couch_doc:from_json_obj(couch_httpd:json_body(Req)),
     Doc2 = case Doc#doc.id of
         <<"">> ->
@@ -254,6 +247,7 @@ db_req(#httpd{path_parts=[_DbName]}=Req, _Db) ->
     send_method_not_allowed(Req, "DELETE,GET,HEAD,POST");
 
 db_req(#httpd{method='POST',path_parts=[_,<<"_ensure_full_commit">>]}=Req, Db) ->
+    couch_httpd:validate_ctype(Req, "application/json"),
     UpdateSeq = couch_db:get_update_seq(Db),
     CommittedSeq = couch_db:get_committed_update_seq(Db),
     {ok, StartTime} =
@@ -266,7 +260,6 @@ db_req(#httpd{method='POST',path_parts=[_,<<"_ensure_full_commit">>]}=Req, Db) -
             throw({bad_request,
                 "can't do a full commit ahead of current update_seq"});
         RequiredSeq > CommittedSeq ->
-            % user asked for an explicit sequence, don't commit any batches
             couch_db:ensure_full_commit(Db);
         true ->
             {ok, Db#db.instance_start_time}
@@ -282,6 +275,7 @@ db_req(#httpd{path_parts=[_,<<"_ensure_full_commit">>]}=Req, _Db) ->
 
 db_req(#httpd{method='POST',path_parts=[_,<<"_bulk_docs">>]}=Req, Db) ->
     couch_stats_collector:increment({httpd, bulk_requests}),
+    couch_httpd:validate_ctype(Req, "application/json"),
     {JsonProps} = couch_httpd:json_body_obj(Req),
     DocsArray = couch_util:get_value(<<"docs">>, JsonProps),
     case couch_httpd:header_value(Req, "X-Couch-Full-Commit") of
@@ -329,7 +323,7 @@ db_req(#httpd{method='POST',path_parts=[_,<<"_bulk_docs">>]}=Req, Db) ->
             send_json(Req, 417, ErrorsJson)
         end;
     false ->
-        Docs = lists:map(fun(JsonObj) -> 
+        Docs = lists:map(fun(JsonObj) ->
                 Doc = couch_doc:from_json_obj(JsonObj),
                 validate_attachment_names(Doc),
                 Doc
@@ -343,6 +337,7 @@ db_req(#httpd{path_parts=[_,<<"_bulk_docs">>]}=Req, _Db) ->
     send_method_not_allowed(Req, "POST");
 
 db_req(#httpd{method='POST',path_parts=[_,<<"_purge">>]}=Req, Db) ->
+    couch_httpd:validate_ctype(Req, "application/json"),
     {IdsRevs} = couch_httpd:json_body_obj(Req),
     IdsRevs2 = [{Id, couch_doc:parse_revs(Revs)} || {Id, Revs} <- IdsRevs],
 
@@ -387,24 +382,23 @@ db_req(#httpd{method='POST',path_parts=[_,<<"_missing_revs">>]}=Req, Db) ->
 db_req(#httpd{path_parts=[_,<<"_missing_revs">>]}=Req, _Db) ->
     send_method_not_allowed(Req, "POST");
 
-
 db_req(#httpd{method='POST',path_parts=[_,<<"_revs_diff">>]}=Req, Db) ->
     {JsonDocIdRevs} = couch_httpd:json_body_obj(Req),
-    JsonDocIdRevs2 = 
+    JsonDocIdRevs2 =
         [{Id, couch_doc:parse_revs(RevStrs)} || {Id, RevStrs} <- JsonDocIdRevs],
     {ok, Results} = couch_db:get_missing_revs(Db, JsonDocIdRevs2),
-    Results2 = 
+    Results2 =
     lists:map(fun({Id, MissingRevs, PossibleAncestors}) ->
         {Id,
-            {[{missing, couch_doc:revs_to_strs(MissingRevs)}] ++ 
+            {[{missing, couch_doc:revs_to_strs(MissingRevs)}] ++
                 if PossibleAncestors == [] ->
                     [];
-                true -> 
-                    [{possible_ancestors, 
+                true ->
+                    [{possible_ancestors,
                         couch_doc:revs_to_strs(PossibleAncestors)}]
                 end}}
     end, Results),
-    send_json(Req, {[{missing, {Results2}}]});
+    send_json(Req, {Results2});
 
 db_req(#httpd{path_parts=[_,<<"_revs_diff">>]}=Req, _Db) ->
     send_method_not_allowed(Req, "POST");
@@ -492,7 +486,13 @@ all_docs_view(Req, Db, Keys) ->
         true -> EndDocId
         end,
         FoldAccInit = {Limit, SkipCount, undefined, []},
-		UpdateSeq = couch_db:get_update_seq(Db),
+        UpdateSeq = couch_db:get_update_seq(Db),
+        JsonParams = case couch_httpd:qs_value(Req, "update_seq") of
+        "true" ->
+            [{update_seq, UpdateSeq}];
+        _Else ->
+            []
+        end,
         case Keys of
         nil ->
             FoldlFun = couch_httpd_view:make_view_fold_fun(Req, QueryArgs, CurrentEtag, Db, UpdateSeq,
@@ -510,7 +510,7 @@ all_docs_view(Req, Db, Keys) ->
             {ok, LastOffset, FoldResult} = couch_db:enum_docs(Db,
                 AdapterFun, FoldAccInit, [{start_key, StartId}, {dir, Dir},
                     {if Inclusive -> end_key; true -> end_key_gt end, EndId}]),
-            couch_httpd_view:finish_view_fold(Req, TotalRowCount, LastOffset, FoldResult);
+            couch_httpd_view:finish_view_fold(Req, TotalRowCount, LastOffset, FoldResult, JsonParams);
         _ ->
             FoldlFun = couch_httpd_view:make_view_fold_fun(Req, QueryArgs, CurrentEtag, Db, UpdateSeq,
                 TotalRowCount, #view_fold_helper_funs{
@@ -539,7 +539,7 @@ all_docs_view(Req, Db, Keys) ->
                     {_, FoldAcc2} = FoldlFun(Doc, 0, FoldAcc),
                     FoldAcc2
                 end, FoldAccInit, Keys),
-            couch_httpd_view:finish_view_fold(Req, TotalRowCount, 0, FoldResult)
+            couch_httpd_view:finish_view_fold(Req, TotalRowCount, 0, FoldResult, JsonParams)
         end
     end).
 
@@ -548,11 +548,11 @@ db_doc_req(#httpd{method='DELETE'}=Req, Db, DocId) ->
     couch_doc_open(Db, DocId, nil, []),
     case couch_httpd:qs_value(Req, "rev") of
     undefined ->
-        update_doc(Req, Db, DocId, 
+        update_doc(Req, Db, DocId,
                 couch_doc_from_req(Req, DocId, {[{<<"_deleted">>,true}]}));
     Rev ->
-        update_doc(Req, Db, DocId, 
-                couch_doc_from_req(Req, DocId, 
+        update_doc(Req, Db, DocId,
+                couch_doc_from_req(Req, DocId,
                     {[{<<"_rev">>, ?l2b(Rev)},{<<"_deleted">>,true}]}))
     end;
 
@@ -565,55 +565,59 @@ db_doc_req(#httpd{method='GET'}=Req, Db, DocId) ->
     } = parse_doc_query(Req),
     case Revs of
     [] ->
-        Doc = couch_doc_open(Db, DocId, Rev, Options),
         Options2 =
         if AttsSince /= nil ->
-            RevPos = find_ancestor_rev_pos(Doc#doc.revs, AttsSince),
-            [{atts_after_revpos, RevPos} | Options];
+            [{atts_since, AttsSince}, attachments | Options];
         true -> Options
         end,
+        Doc = couch_doc_open(Db, DocId, Rev, Options2),
         send_doc(Req, Doc, Options2);
     _ ->
         {ok, Results} = couch_db:open_doc_revs(Db, DocId, Revs, Options),
-        {ok, Resp} = start_json_response(Req, 200),
-        send_chunk(Resp, "["),
-        % We loop through the docs. The first time through the separator
-        % is whitespace, then a comma on subsequent iterations.
-        lists:foldl(
-            fun(Result, AccSeparator) ->
-                case Result of
-                {ok, Doc} ->
-                    JsonDoc = couch_doc:to_json_obj(Doc, Options),
-                    Json = ?JSON_ENCODE({[{ok, JsonDoc}]}),
-                    send_chunk(Resp, AccSeparator ++ Json);
-                {{not_found, missing}, RevId} ->
-                    RevStr = couch_doc:rev_to_str(RevId),
-                    Json = ?JSON_ENCODE({[{"missing", RevStr}]}),
-                    send_chunk(Resp, AccSeparator ++ Json)
+        AcceptedTypes = case couch_httpd:header_value(Req, "Accept") of
+            undefined       -> [];
+            AcceptHeader    -> string:tokens(AcceptHeader, "; ")
+        end,
+        case lists:member("multipart/mixed", AcceptedTypes) of
+        false ->
+            {ok, Resp} = start_json_response(Req, 200),
+            send_chunk(Resp, "["),
+            % We loop through the docs. The first time through the separator
+            % is whitespace, then a comma on subsequent iterations.
+            lists:foldl(
+                fun(Result, AccSeparator) ->
+                    case Result of
+                    {ok, Doc} ->
+                        JsonDoc = couch_doc:to_json_obj(Doc, Options),
+                        Json = ?JSON_ENCODE({[{ok, JsonDoc}]}),
+                        send_chunk(Resp, AccSeparator ++ Json);
+                    {{not_found, missing}, RevId} ->
+                        RevStr = couch_doc:rev_to_str(RevId),
+                        Json = ?JSON_ENCODE({[{"missing", RevStr}]}),
+                        send_chunk(Resp, AccSeparator ++ Json)
+                    end,
+                    "," % AccSeparator now has a comma
                 end,
-                "," % AccSeparator now has a comma
-            end,
-            "", Results),
-        send_chunk(Resp, "]"),
-        end_json_response(Resp)
+                "", Results),
+            send_chunk(Resp, "]"),
+            end_json_response(Resp);
+        true ->
+            send_docs_multipart(Req, Results, Options)
+        end
     end;
 
+
 db_doc_req(#httpd{method='POST'}=Req, Db, DocId) ->
+    couch_httpd:validate_referer(Req),
     couch_doc:validate_docid(DocId),
-    case couch_httpd:header_value(Req, "Content-Type") of
-    "multipart/form-data" ++  _Rest ->
-        ok;
-    _Else ->
-        throw({bad_ctype, <<"Invalid Content-Type header for form upload">>})
-    end,
+    couch_httpd:validate_ctype(Req, "multipart/form-data"),
     Form = couch_httpd:parse_form(Req),
-    case proplists:is_defined("_doc", Form) of
-    true ->
-        Json = ?JSON_DECODE(couch_util:get_value("_doc", Form)),
-        Doc = couch_doc_from_req(Req, DocId, Json);
-    false ->
-        Rev = couch_doc:parse_rev(list_to_binary(couch_util:get_value("_rev", Form))),
-        {ok, [{ok, Doc}]} = couch_db:open_doc_revs(Db, DocId, [Rev], [])
+    case couch_util:get_value("_doc", Form) of
+    undefined ->
+        Rev = couch_doc:parse_rev(couch_util:get_value("_rev", Form)),
+        {ok, [{ok, Doc}]} = couch_db:open_doc_revs(Db, DocId, [Rev], []);
+    Json ->
+        Doc = couch_doc_from_req(Req, DocId, ?JSON_DECODE(Json))
     end,
     UpdatedAtts = [
         #att{name=validate_attachment_name(Name),
@@ -649,13 +653,13 @@ db_doc_req(#httpd{method='PUT'}=Req, Db, DocId) ->
     
     Loc = absolute_uri(Req, "/" ++ ?b2l(Db#db.name) ++ "/" ++ ?b2l(DocId)),
     RespHeaders = [{"Location", Loc}],
-    case couch_httpd:header_value(Req, "Content-Type") of
-    ("multipart/related" ++  _Rest) = ContentType->
-        Doc0 = couch_doc:doc_from_multi_part_stream(ContentType,
+    case couch_util:to_list(couch_httpd:header_value(Req, "Content-Type")) of
+    ("multipart/related;" ++ _) = ContentType ->
+        {ok, Doc0} = couch_doc:doc_from_multi_part_stream(ContentType,
                 fun() -> receive_request_data(Req) end),
         Doc = couch_doc_from_req(Req, DocId, Doc0),
         update_doc(Req, Db, DocId, Doc, RespHeaders, UpdateType);
-    _ ->
+    _Else ->
         case couch_httpd:qs_value(Req, "batch") of
         "ok" ->
             % batch
@@ -674,7 +678,8 @@ db_doc_req(#httpd{method='PUT'}=Req, Db, DocId) ->
             ]});
         _Normal ->
             % normal
-            Doc = couch_doc_from_req(Req, DocId, couch_httpd:json_body(Req)),
+            Body = couch_httpd:json_body(Req),
+            Doc = couch_doc_from_req(Req, DocId, Body),
             update_doc(Req, Db, DocId, Doc, RespHeaders, UpdateType)
         end
     end;
@@ -699,24 +704,13 @@ db_doc_req(#httpd{method='COPY'}=Req, Db, SourceDocId) ->
 db_doc_req(Req, _Db, _DocId) ->
     send_method_not_allowed(Req, "DELETE,GET,HEAD,POST,PUT,COPY").
 
-find_ancestor_rev_pos({_, []}, _AttsSinceRevs) ->
-    0;
-find_ancestor_rev_pos(_DocRevs, []) ->
-    0;
-find_ancestor_rev_pos({RevPos, [RevId|Rest]}, AttsSinceRevs) ->
-    case lists:member({RevPos, RevId}, AttsSinceRevs) of
-    true ->
-        RevPos;
-    false ->
-        find_ancestor_rev_pos({RevPos - 1, Rest}, AttsSinceRevs)
-    end.
 
 send_doc(Req, Doc, Options) ->
     case Doc#doc.meta of
     [] ->
         DiskEtag = couch_httpd:doc_etag(Doc),
         % output etag only when we have no meta
-        couch_httpd:etag_respond(Req, DiskEtag, fun() -> 
+        couch_httpd:etag_respond(Req, DiskEtag, fun() ->
             send_doc_efficiently(Req, Doc, [{"Etag", DiskEtag}], Options)
         end);
     _ ->
@@ -727,8 +721,7 @@ send_doc(Req, Doc, Options) ->
 send_doc_efficiently(Req, #doc{atts=[]}=Doc, Headers, Options) ->
         send_json(Req, 200, Headers, couch_doc:to_json_obj(Doc, Options));
 send_doc_efficiently(Req, #doc{atts=Atts}=Doc, Headers, Options) ->
-    case lists:member(attachments, Options) orelse 
-        proplists:is_defined(atts_after_revpos, Options) of
+    case lists:member(attachments, Options) of
     true ->
         AcceptedTypes = case couch_httpd:header_value(Req, "Accept") of
             undefined       -> [];
@@ -739,26 +732,75 @@ send_doc_efficiently(Req, #doc{atts=Atts}=Doc, Headers, Options) ->
             send_json(Req, 200, Headers, couch_doc:to_json_obj(Doc, Options));
         true ->
             Boundary = couch_uuids:random(),
-            JsonBytes = ?JSON_ENCODE(couch_doc:to_json_obj(Doc, [follows|Options])),
-            AttsSinceRevPos = couch_util:get_value(atts_after_revpos, Options, 0),
-            Len = couch_doc:len_doc_to_multi_part_stream(Boundary,JsonBytes,Atts,
-                    AttsSinceRevPos,false),
-            CType = {<<"Content-Type">>, 
-                    <<"multipart/related; boundary=\"", Boundary/binary, "\"">>},
+            JsonBytes = ?JSON_ENCODE(couch_doc:to_json_obj(Doc, 
+                    [attachments, follows|Options])),
+            {ContentType, Len} = couch_doc:len_doc_to_multi_part_stream(
+                    Boundary,JsonBytes, Atts,false),
+            CType = {<<"Content-Type">>, ContentType},
             {ok, Resp} = start_response_length(Req, 200, [CType|Headers], Len),
             couch_doc:doc_to_multi_part_stream(Boundary,JsonBytes,Atts,
-                    AttsSinceRevPos,
                     fun(Data) -> couch_httpd:send(Resp, Data) end, false)
         end;
     false ->
         send_json(Req, 200, Headers, couch_doc:to_json_obj(Doc, Options))
     end.
 
+send_docs_multipart(Req, Results, Options) ->
+    OuterBoundary = couch_uuids:random(),
+    InnerBoundary = couch_uuids:random(),
+    CType = {"Content-Type", 
+        "multipart/mixed; boundary=\"" ++ ?b2l(OuterBoundary) ++ "\""},
+    {ok, Resp} = start_chunked_response(Req, 200, [CType]),
+    couch_httpd:send_chunk(Resp, <<"--", OuterBoundary/binary>>),
+    lists:foreach(
+        fun({ok, #doc{atts=Atts}=Doc}) ->
+            JsonBytes = ?JSON_ENCODE(couch_doc:to_json_obj(Doc, 
+                    [attachments,follows|Options])),
+            {ContentType, _Len} = couch_doc:len_doc_to_multi_part_stream(
+                    InnerBoundary, JsonBytes, Atts, false),
+            couch_httpd:send_chunk(Resp, <<"\r\nContent-Type: ",
+                    ContentType/binary, "\r\n\r\n">>),
+            couch_doc:doc_to_multi_part_stream(InnerBoundary, JsonBytes, Atts,
+                    fun(Data) -> couch_httpd:send_chunk(Resp, Data)
+                    end, false),
+             couch_httpd:send_chunk(Resp, <<"\r\n--", OuterBoundary/binary>>);
+        ({{not_found, missing}, RevId}) ->
+             RevStr = couch_doc:rev_to_str(RevId),
+             Json = ?JSON_ENCODE({[{"missing", RevStr}]}),
+             couch_httpd:send_chunk(Resp, 
+                [<<"\r\nContent-Type: application/json; error=\"true\"\r\n\r\n">>, 
+                Json,
+                <<"\r\n--", OuterBoundary/binary>>])
+         end, Results),
+    couch_httpd:send_chunk(Resp, <<"--">>),
+    couch_httpd:last_chunk(Resp).
 
+send_ranges_multipart(Req, ContentType, Len, Att, Ranges) ->
+    Boundary = couch_uuids:random(),
+    CType = {"Content-Type",
+        "multipart/byteranges; boundary=\"" ++ ?b2l(Boundary) ++ "\""},
+    {ok, Resp} = start_chunked_response(Req, 206, [CType]),
+    couch_httpd:send_chunk(Resp, <<"--", Boundary/binary>>),
+    lists:foreach(fun({From, To}) ->
+        ContentRange = make_content_range(From, To, Len),
+        couch_httpd:send_chunk(Resp,
+            <<"\r\nContent-Type: ", ContentType/binary, "\r\n",
+            "Content-Range: ", ContentRange/binary, "\r\n",
+           "\r\n">>),
+        couch_doc:range_att_foldl(Att, From, To + 1,
+            fun(Seg, _) -> send_chunk(Resp, Seg) end, {ok, Resp}),
+        couch_httpd:send_chunk(Resp, <<"\r\n--", Boundary/binary>>)
+    end, Ranges),
+    couch_httpd:send_chunk(Resp, <<"--">>),
+    couch_httpd:last_chunk(Resp),
+    {ok, Resp}.
 
 receive_request_data(Req) ->
     {couch_httpd:recv(Req, 0), fun() -> receive_request_data(Req) end}.
     
+make_content_range(From, To, Len) ->
+    ?l2b(io_lib:format("bytes ~B-~B/~B", [From, To, Len])).
+
 update_doc_result_to_json({{Id, Rev}, Error}) ->
         {_Code, Err, Msg} = couch_httpd:error_info(Error),
         {[{id, Id}, {rev, couch_doc:rev_to_str(Rev)},
@@ -807,6 +849,8 @@ couch_doc_from_req(Req, DocId, #doc{revs=Revs}=Doc) ->
     case extract_header_rev(Req, ExplicitDocRev) of
     missing_rev ->
         Revs2 = {0, []};
+    ExplicitDocRev ->
+        Revs2 = Revs;
     {Pos, Rev} ->
         Revs2 = {Pos, [Rev]}
     end,
@@ -841,7 +885,7 @@ couch_doc_open(Db, DocId, Rev, Options) ->
 
 % Attachment request handlers
 
-db_attachment_req(#httpd{method='GET'}=Req, Db, DocId, FileNameParts) ->
+db_attachment_req(#httpd{method='GET',mochi_req=MochiReq}=Req, Db, DocId, FileNameParts) ->
     FileName = list_to_binary(mochiweb_util:join(lists:map(fun binary_to_list/1, FileNameParts),"/")),
     #doc_query_args{
         rev=Rev,
@@ -859,16 +903,6 @@ db_attachment_req(#httpd{method='GET'}=Req, Db, DocId, FileNameParts) ->
            atom_to_list(Enc),
            couch_httpd:accepted_encodings(Req)
         ),
-        Headers = [
-            {"ETag", Etag},
-            {"Cache-Control", "must-revalidate"},
-            {"Content-Type", binary_to_list(Type)}
-        ] ++ case ReqAcceptsAttEnc of
-        true ->
-            [{"Content-Encoding", atom_to_list(Enc)}];
-        _ ->
-            []
-        end,
         Len = case {Enc, ReqAcceptsAttEnc} of
         {identity, _} ->
             % stored and served in identity form
@@ -888,6 +922,21 @@ db_attachment_req(#httpd{method='GET'}=Req, Db, DocId, FileNameParts) ->
             % header we'll fall back to a chunked response.
             undefined
         end,
+        Headers = [
+            {"ETag", Etag},
+            {"Cache-Control", "must-revalidate"},
+            {"Content-Type", binary_to_list(Type)}
+        ] ++ case ReqAcceptsAttEnc of
+        true ->
+            [{"Content-Encoding", atom_to_list(Enc)}];
+        _ ->
+            []
+        end ++ case Enc of
+            identity ->
+                [{"Accept-Ranges", "bytes"}];
+            _ ->
+                [{"Accept-Ranges", "none"}]
+        end,
         AttFun = case ReqAcceptsAttEnc of
         false ->
             fun couch_doc:att_foldl_decode/3;
@@ -901,11 +950,23 @@ db_attachment_req(#httpd{method='GET'}=Req, Db, DocId, FileNameParts) ->
                 case Len of
                 undefined ->
                     {ok, Resp} = start_chunked_response(Req, 200, Headers),
-                    AttFun(Att, fun(Seg, _) -> send_chunk(Resp, Seg) end, ok),
+                    AttFun(Att, fun(Seg, _) -> send_chunk(Resp, Seg) end, {ok, Resp}),
                     last_chunk(Resp);
                 _ ->
-                    {ok, Resp} = start_response_length(Req, 200, Headers, Len),
-                    AttFun(Att, fun(Seg, _) -> send(Resp, Seg) end, ok)
+                    Ranges = parse_ranges(MochiReq:get(range), Len),
+                    case {Enc, Ranges} of
+                        {identity, [{From, To}]} ->
+                            Headers1 = [{<<"Content-Range">>, make_content_range(From, To, Len)}]
+                                ++ Headers,
+                            {ok, Resp} = start_response_length(Req, 206, Headers1, To - From + 1),
+                            couch_doc:range_att_foldl(Att, From, To + 1,
+                                fun(Seg, _) -> send(Resp, Seg) end, {ok, Resp});
+                        {identity, Ranges} when is_list(Ranges) ->
+                            send_ranges_multipart(Req, Type, Len, Att, Ranges);
+                        _ ->
+                            {ok, Resp} = start_response_length(Req, 200, Headers, Len),
+                            AttFun(Att, fun(Seg, _) -> send(Resp, Seg) end, {ok, Resp})
+                    end
                 end
             end
         )
@@ -960,9 +1021,7 @@ db_attachment_req(#httpd{method=Method,mochi_req=MochiReq}=Req, Db, DocId, FileN
                         end,
                         
                         
-                        fun() -> couch_httpd:recv(Req, 0) end;
-                    Length ->
-                        exit({length_not_integer, Length})
+                        fun() -> couch_httpd:recv(Req, 0) end
                     end,
                 att_len = case couch_httpd:header_value(Req,"Content-Length") of
                     undefined ->
@@ -1009,7 +1068,8 @@ db_attachment_req(#httpd{method=Method,mochi_req=MochiReq}=Req, Db, DocId, FileN
         'DELETE' ->
             {200, []};
         _ ->
-            {201, [{"Location", absolute_uri(Req, "/" ++
+            {201, [{"Etag", "\"" ++ ?b2l(couch_doc:rev_to_str(UpdatedRev)) ++ "\""},
+               {"Location", absolute_uri(Req, "/" ++
                 binary_to_list(DbName) ++ "/" ++
                 binary_to_list(DocId) ++ "/" ++
                 binary_to_list(FileName)
@@ -1024,6 +1084,25 @@ db_attachment_req(#httpd{method=Method,mochi_req=MochiReq}=Req, Db, DocId, FileN
 db_attachment_req(Req, _Db, _DocId, _FileNameParts) ->
     send_method_not_allowed(Req, "DELETE,GET,HEAD,PUT").
 
+parse_ranges(undefined, _Len) ->
+    undefined;
+parse_ranges(fail, _Len) ->
+    undefined;
+parse_ranges(Ranges, Len) ->
+    parse_ranges(Ranges, Len, []).
+
+parse_ranges([], _Len, Acc) ->
+    lists:reverse(Acc);
+parse_ranges([{From, To}|_], _Len, _Acc) when is_integer(From) andalso is_integer(To) andalso To < From ->
+    throw(requested_range_not_satisfiable);
+parse_ranges([{From, To}|Rest], Len, Acc) when is_integer(To) andalso To >= Len ->
+    parse_ranges([{From, Len-1}] ++ Rest, Len, Acc);
+parse_ranges([{none, To}|Rest], Len, Acc) ->
+    parse_ranges([{Len - To, Len - 1}] ++ Rest, Len, Acc);
+parse_ranges([{From, none}|Rest], Len, Acc) ->
+    parse_ranges([{From, Len - 1}] ++ Rest, Len, Acc);
+parse_ranges([{From,To}|Rest], Len, Acc) ->
+    parse_ranges(Rest, Len, [{From, To}] ++ Acc).
 
 get_md5_header(Req) ->
     ContentMD5 = couch_httpd:header_value(Req, "Content-MD5"),

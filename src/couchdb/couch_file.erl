@@ -28,6 +28,7 @@
 -export([pread_binary/2, read_header/1, truncate/2, upgrade_old_header/2]).
 -export([append_term_md5/2,append_binary_md5/2]).
 -export([init/1, terminate/2, handle_call/3, handle_cast/2, code_change/3, handle_info/2]).
+-export([delete/2,delete/3,init_delete_dir/1]).
 
 %%----------------------------------------------------------------------
 %% Args:   Valid Options are [create] and [create,overwrite].
@@ -89,7 +90,7 @@ append_binary(Fd, Bin) ->
     
 append_binary_md5(Fd, Bin) ->
     Size = iolist_size(Bin),
-    gen_server:call(Fd, {append_bin, 
+    gen_server:call(Fd, {append_bin,
             [<<1:1/integer,Size:31/integer>>, couch_util:md5(Bin), Bin]}, infinity).
 
 
@@ -146,6 +147,9 @@ truncate(Fd, Pos) ->
 %%  or {error, Reason}.
 %%----------------------------------------------------------------------
 
+sync(Filepath) when is_list(Filepath) ->
+    {ok, Fd} = file:open(Filepath, [append, raw]),
+    try file:sync(Fd) after file:close(Fd) end;
 sync(Fd) ->
     gen_server:call(Fd, sync, infinity).
 
@@ -165,6 +169,37 @@ close(Fd) ->
     after
         erlang:demonitor(MRef, [flush])
     end.
+
+
+delete(RootDir, Filepath) ->
+    delete(RootDir, Filepath, true).
+
+
+delete(RootDir, Filepath, Async) ->
+    DelFile = filename:join([RootDir,".delete", ?b2l(couch_uuids:random())]),
+    case file:rename(Filepath, DelFile) of
+    ok ->
+        if (Async) ->
+            spawn(file, delete, [DelFile]),
+            ok;
+        true ->
+            file:delete(DelFile)
+        end;
+    Error ->
+        Error
+    end.
+
+
+init_delete_dir(RootDir) ->
+    Dir = filename:join(RootDir,".delete"),
+    % note: ensure_dir requires an actual filename companent, which is the
+    % reason for "foo".
+    filelib:ensure_dir(filename:join(Dir,"foo")),
+    filelib:fold_files(Dir, ".*", true,
+        fun(Filename, _) ->
+            ok = file:delete(Filename)
+        end, ok).
+
 
 % 09 UPGRADE CODE
 old_pread(Fd, Pos, Len) ->
@@ -218,16 +253,14 @@ init({Filepath, Options, ReturnPid, Ref}) ->
                     {ok, 0} = file:position(Fd, 0),
                     ok = file:truncate(Fd),
                     ok = file:sync(Fd),
-                    couch_stats_collector:track_process_count(
-                            {couchdb, open_os_files}),
+                    maybe_track_open_os_files(Options),
                     {ok, #file{fd=Fd}};
                 false ->
                     ok = file:close(Fd),
                     init_status_error(ReturnPid, Ref, file_exists)
                 end;
             false ->
-                couch_stats_collector:track_process_count(
-                        {couchdb, open_os_files}),
+                maybe_track_open_os_files(Options),
                 {ok, #file{fd=Fd}}
             end;
         Error ->
@@ -239,7 +272,7 @@ init({Filepath, Options, ReturnPid, Ref}) ->
         {ok, Fd_Read} ->
             {ok, Fd} = file:open(Filepath, [read, append, raw, binary]),
             ok = file:close(Fd_Read),
-            couch_stats_collector:track_process_count({couchdb, open_os_files}),
+            maybe_track_open_os_files(Options),
             {ok, Length} = file:position(Fd, eof),
             {ok, #file{fd=Fd, eof=Length}};
         Error ->
@@ -247,6 +280,13 @@ init({Filepath, Options, ReturnPid, Ref}) ->
         end
     end.
 
+maybe_track_open_os_files(FileOptions) ->
+    case lists:member(sys_db, FileOptions) of
+    true ->
+        ok;
+    false ->
+        couch_stats_collector:track_process_count({couchdb, open_os_files})
+    end.
 
 terminate(_Reason, _Fd) ->
     ok.
@@ -266,7 +306,7 @@ handle_call({pread_iolist, Pos}, _From, File) ->
         end;
     <<0:1/integer,Len:31/integer>> ->
         {Iolist, _} = read_raw_iolist_int(File, NextPos, Len),
-        {reply, {ok, Iolist}, File} 
+        {reply, {ok, Iolist}, File}
     end;
 handle_call({pread, Pos, Bytes}, _From, #file{fd=Fd,tail_append_begin=TailAppendBegin}=File) ->
     {ok, Bin} = file:pread(Fd, Pos, Bytes),
@@ -299,7 +339,7 @@ handle_call({write_header, Bin}, _From, #file{fd=Fd, eof=Pos}=File) ->
     BlockOffset ->
         Padding = <<0:(8*(?SIZE_BLOCK-BlockOffset))>>
     end,
-    FinalBin = [Padding, <<1, BinSize:32/integer>> | make_blocks(1, [Bin])],
+    FinalBin = [Padding, <<1, BinSize:32/integer>> | make_blocks(5, [Bin])],
     case file:write(Fd, FinalBin) of
     ok ->
         {reply, ok, File#file{eof=Pos+iolist_size(FinalBin)}};
@@ -468,6 +508,8 @@ load_header(Fd, Block) ->
 
 -spec read_raw_iolist_int(#file{}, Pos::non_neg_integer(), Len::non_neg_integer()) ->
     {Data::iolist(), CurPos::non_neg_integer()}.
+read_raw_iolist_int(Fd, {Pos, _Size}, Len) -> % 0110 UPGRADE CODE
+    read_raw_iolist_int(Fd, Pos, Len);
 read_raw_iolist_int(#file{fd=Fd, tail_append_begin=TAB}, Pos, Len) ->
     BlockOffset = Pos rem ?SIZE_BLOCK,
     TotalBytes = calculate_total_read_len(BlockOffset, Len),

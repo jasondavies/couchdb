@@ -17,7 +17,7 @@ couchlibdir = $(localerlanglibdir)/couch-$(version)
 couchincludedir = $(couchlibdir)/include
 couchebindir = $(couchlibdir)/ebin
 
-couchinclude_DATA = couch_db.hrl
+couchinclude_DATA = couch_db.hrl couch_js_functions.hrl
 couchebin_DATA = $(compiled_files)
 
 # dist_devdoc_DATA = $(doc_base) $(doc_modules)
@@ -29,6 +29,7 @@ CLEANFILES = $(compiled_files) $(doc_base)
 source_files = \
     couch.erl \
     couch_app.erl \
+    couch_auth_cache.erl \
     couch_btree.erl \
     couch_changes.erl \
     couch_config.erl \
@@ -51,6 +52,7 @@ source_files = \
     couch_httpd_misc_handlers.erl \
 	couch_httpd_rewrite.erl \
     couch_httpd_stats_handlers.erl \
+	couch_httpd_vhost.erl \
     couch_key_tree.erl \
     couch_log.erl \
     couch_mdns.erl \
@@ -66,6 +68,7 @@ source_files = \
     couch_rep_reader.erl \
     couch_rep_sup.erl \
     couch_rep_writer.erl \
+    couch_rep_db_listener.erl \
     couch_server.erl \
     couch_server_sup.erl \
     couch_stats_aggregator.erl \
@@ -81,12 +84,13 @@ source_files = \
     couch_db_updater.erl \
     couch_work_queue.erl
 
-EXTRA_DIST = $(source_files) couch_db.hrl
+EXTRA_DIST = $(source_files) couch_db.hrl couch_js_functions.hrl
 
 compiled_files = \
     couch.app \
     couch.beam \
     couch_app.beam \
+    couch_auth_cache.beam \
     couch_btree.beam \
     couch_changes.beam \
     couch_config.beam \
@@ -109,6 +113,7 @@ compiled_files = \
     couch_httpd_misc_handlers.beam \
 	couch_httpd_rewrite.beam \
     couch_httpd_stats_handlers.beam \
+	couch_httpd_vhost.beam \
     couch_key_tree.beam \
     couch_log.beam \
     couch_mdns.beam \
@@ -124,6 +129,7 @@ compiled_files = \
     couch_rep_reader.beam \
     couch_rep_sup.beam \
     couch_rep_writer.beam \
+    couch_rep_db_listener.beam \
     couch_server.beam \
     couch_server_sup.beam \
     couch_stats_aggregator.beam \
@@ -181,7 +187,7 @@ couch.app: couch.app.tpl
 	$@ < $<
 else
 couch.app: couch.app.tpl
-	modules=`find . -name "*.erl" -exec basename {} .erl \; | tr '\n' ',' | sed "s/,$$//"`; \
+	modules=`{ find . -name "*.erl" -exec basename {} .erl \; | tr '\n' ','; echo ''; } | sed "s/,$$//"`; \
 	sed -e "s|%package_name%|@package_name@|g" \
 	    -e "s|%version%|@version@|g" \
 	    -e "s|@modules@|$$modules|g" \
@@ -196,6 +202,6 @@ endif
 
 # $(ERL) -noshell -run edoc_run files [\"$<\"]
 
-%.beam: %.erl couch_db.hrl
+%.beam: %.erl couch_db.hrl couch_js_functions.hrl
 	$(ERLC) $(ERLC_FLAGS) ${TEST} $<;
 

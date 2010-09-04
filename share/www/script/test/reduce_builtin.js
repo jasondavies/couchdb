@@ -72,6 +72,26 @@ couchTests.reduce_builtin = function(debug) {
     T(result.rows[0].value == 2*(summate(numDocs-i) - summate(i-1)));
   }
 
+  // test for trailing characters after builtin functions, desired behaviour
+  // is to disregard any trailing characters
+  // I think the behavior should be a prefix test, so that even "_statsorama" 
+  // or "_stats\nare\awesome" should work just as "_stats" does. - JChris
+
+  var trailing = ["\u000a", "orama", "\nare\nawesome", " ", "     \n  "];
+
+  for(var i=0; i < trailing.length; i++) {
+    result = db.query(map, "_sum" + trailing[i]);
+    T(result.rows[0].value == 2*summate(numDocs));
+    result = db.query(map, "_count" + trailing[i]);
+    T(result.rows[0].value == 1000);
+    result = db.query(map, "_stats" + trailing[i]);
+    T(result.rows[0].value.sum == 2*summate(numDocs));
+    T(result.rows[0].value.count == 1000);
+    T(result.rows[0].value.min == 1);
+    T(result.rows[0].value.max == 500);
+    T(result.rows[0].value.sumsqr == 2*sumsqr(numDocs));
+  }
+
   db.deleteDb();
   db.createDb();
 
@@ -129,5 +149,30 @@ couchTests.reduce_builtin = function(debug) {
       T(equals(results.rows[5], {key:["d","b"],value:10*i}));
       T(equals(results.rows[6], {key:["d","c"],value:10*i}));
     };
+
+    map = function (doc) {emit(doc.keys, [1, 1])};
+
+    var results = db.query(map, "_sum", {group:true});
+    T(equals(results.rows[0], {key:["a"],value:[20*i,20*i]}));
+    T(equals(results.rows[1], {key:["a","b"],value:[20*i,20*i]}));
+    T(equals(results.rows[2], {key:["a", "b", "c"],value:[10*i,10*i]}));
+    T(equals(results.rows[3], {key:["a", "b", "d"],value:[10*i,10*i]}));
+
+    var results = db.query(map, "_sum", {group: true, limit: 2});
+    T(equals(results.rows[0], {key: ["a"], value: [20*i,20*i]}));
+    T(equals(results.rows.length, 2));
+
+    var results = db.query(map, "_sum", {group_level:1});
+    T(equals(results.rows[0], {key:["a"],value:[70*i,70*i]}));
+    T(equals(results.rows[1], {key:["d"],value:[40*i,40*i]}));
+
+    var results = db.query(map, "_sum", {group_level:2});
+    T(equals(results.rows[0], {key:["a"],value:[20*i,20*i]}));
+    T(equals(results.rows[1], {key:["a","b"],value:[40*i,40*i]}));
+    T(equals(results.rows[2], {key:["a","c"],value:[10*i,10*i]}));
+    T(equals(results.rows[3], {key:["d"],value:[10*i,10*i]}));
+    T(equals(results.rows[4], {key:["d","a"],value:[10*i,10*i]}));
+    T(equals(results.rows[5], {key:["d","b"],value:[10*i,10*i]}));
+    T(equals(results.rows[6], {key:["d","c"],value:[10*i,10*i]}));
   }
 }
